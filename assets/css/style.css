@@ -768,9 +768,25 @@
     font-weight: 700;
 }
 
-.formal-result td:first-child {
-    background: #f11;
+.formal-result .formal-achievement-result {
+    color: #111;
     font-size: 17px;
+}
+
+.formal-achievement-result.ach-evaluasi {
+    background: #f44336;
+}
+
+.formal-achievement-result.ach-cukup {
+    background: #ffd84d;
+}
+
+.formal-achievement-result.ach-baik {
+    background: #8fd17f;
+}
+
+.formal-achievement-result.ach-sangat-baik {
+    background: #8db6e2;
 }
 
 .formal-footer {

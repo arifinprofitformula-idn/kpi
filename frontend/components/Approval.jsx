@@ -20,7 +20,23 @@ function sourceDataFor(kpi, answer) {
   return answer?.link ? 'Link bukti penilaian' : '-';
 }
 
-function DocumentHeader({ page }) {
+function formatDocumentDate(timestamp, fallback) {
+  const source = timestamp || fallback;
+  if (!source) return '-';
+
+  const match = String(source).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return String(source);
+
+  const [, year, month, day] = match;
+  const date = new Date(Number(year), Number(month) - 1, Number(day));
+  return new Intl.DateTimeFormat('id-ID', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  }).format(date);
+}
+
+function DocumentHeader({ page, effectiveDate }) {
   return <table className="formal-document-header">
     <tbody><tr>
       <td className="formal-logo-cell">
@@ -32,7 +48,7 @@ function DocumentHeader({ page }) {
           <tbody>
             <tr><th>No. Dokumen</th><td>FO.EPI.29</td></tr>
             <tr><th>Revisi</th><td>00</td></tr>
-            <tr><th>Tgl. Berlaku</th><td>23 February 2026</td></tr>
+            <tr><th>Tgl. Berlaku</th><td>{effectiveDate}</td></tr>
             <tr><th>Halaman</th><td>{page} dari 2</td></tr>
           </tbody>
         </table>
@@ -64,7 +80,8 @@ function ScoringBlock({ kpi, answer, index }) {
 }
 
 function KpiPrintReport({ submission, onClose }) {
-  const [label] = achievementLabel(submission.scoreCalc.finalAchievement);
+  const [label, achievementClass] = achievementLabel(submission.scoreCalc.finalAchievement);
+  const effectiveDate = formatDocumentDate(submission.created_at, submission.tanggal);
   const kpis = submission.definition?.kpis || [];
   const totalWeight = kpis.reduce((total, kpi) => total + Number(kpi.bobot || 0), 0);
   const firstPageKpis = kpis.slice(0, 6);
@@ -87,7 +104,7 @@ function KpiPrintReport({ submission, onClose }) {
     </div>
     <article className="kpi-print-sheet formal-kpi-report">
       <section className="kpi-print-page">
-        <DocumentHeader page="1" />
+        <DocumentHeader page="1" effectiveDate={effectiveDate} />
         <div className="formal-department">SALES &amp; MARKETING</div>
         <div className="formal-employee"><span>Nama Karyawan</span><b>: {submission.nama}</b></div>
 
@@ -138,7 +155,12 @@ function KpiPrintReport({ submission, onClose }) {
         <table className="formal-result">
           <tbody>
             <tr><th>Achievement</th><th>Catatan</th></tr>
-            <tr><td>{submission.scoreCalc.finalAchievement}%</td><td>{submission.catatan || label}</td></tr>
+            <tr>
+              <td className={`formal-achievement-result ${achievementClass}`}>
+                {submission.scoreCalc.finalAchievement}%
+              </td>
+              <td>{submission.catatan || label}</td>
+            </tr>
           </tbody>
         </table>
 
