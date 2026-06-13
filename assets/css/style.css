@@ -91,6 +91,288 @@
     }
 }
 
+.print-report-root {
+    position: fixed;
+    z-index: 200;
+    inset: 0;
+    overflow-y: auto;
+    padding: 24px;
+    background: #e5e7eb;
+}
+
+.print-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    width: min(210mm, 100%);
+    margin: 0 auto 14px;
+}
+
+.kpi-print-sheet {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 0 auto;
+    padding: 10mm;
+    color: #111827;
+    background: #fff;
+    font-family: Arial, sans-serif;
+    font-size: 9px;
+    box-shadow: 0 10px 30px #0f172a26;
+}
+
+.kpi-print-sheet h1 {
+    margin: 10px 0;
+    text-align: center;
+    font-size: 13px;
+    letter-spacing: .03em;
+}
+
+.document-header {
+    width: 100%;
+    border: 1px solid #111;
+    border-collapse: collapse;
+}
+
+.document-header td {
+    border: 1px solid #111;
+    padding: 6px 8px;
+}
+
+.document-company {
+    width: 64%;
+    text-align: center;
+}
+
+.document-company strong,
+.document-company span {
+    display: block;
+}
+
+.document-company strong {
+    margin-bottom: 4px;
+    font-size: 12px;
+}
+
+.document-meta {
+    display: grid;
+    grid-template-columns: 1fr 1.15fr;
+    gap: 2px 8px;
+}
+
+.document-meta span,
+.document-meta strong {
+    font-size: 8px;
+    font-weight: 400;
+}
+
+.employee-data {
+    display: grid;
+    grid-template-columns: 32mm 1fr;
+    gap: 3px 8px;
+    margin-bottom: 8px;
+}
+
+.print-table {
+    width: 100%;
+    margin-bottom: 9px;
+    border: 1px solid #111;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.print-table th,
+.print-table td {
+    padding: 4px 5px;
+    border: 1px solid #111;
+    vertical-align: top;
+    font-size: 8px;
+    line-height: 1.35;
+}
+
+.print-table th {
+    color: #111;
+    background: #e5e7eb;
+    text-align: center;
+    font-weight: 700;
+}
+
+.definition-table th:first-child,
+.scoring-table th:first-child {
+    width: 7%;
+}
+
+.definition-table th:nth-child(2) {
+    width: 32%;
+}
+
+.definition-table th:nth-child(3) {
+    width: 10%;
+}
+
+.definition-table th:nth-child(4) {
+    width: 20%;
+}
+
+.scoring-table th:nth-child(2) {
+    width: 50%;
+}
+
+.scoring-table th:nth-child(3) {
+    width: 15%;
+}
+
+.scoring-table th:nth-child(4),
+.scoring-table th:nth-child(5) {
+    width: 14%;
+}
+
+.scoring-table td:not(:nth-child(2)),
+.definition-table td:first-child,
+.definition-table td:nth-child(3) {
+    text-align: center;
+    vertical-align: middle;
+}
+
+.scoring-table td span {
+    display: block;
+    margin-top: 2px;
+    padding: 1px 3px;
+}
+
+.scoring-table .selected-criterion {
+    background: #dbeafe;
+    font-weight: 700;
+}
+
+.print-total {
+    font-weight: 700;
+    background: #f3f4f6;
+}
+
+.print-summary {
+    display: grid;
+    grid-template-columns: 1fr 1.1fr 1fr;
+    gap: 8px;
+    margin: 8px 0;
+}
+
+.print-summary > div,
+.print-summary table {
+    padding: 7px;
+    border: 1px solid #111;
+}
+
+.print-summary h2 {
+    margin-bottom: 5px;
+    font-size: 9px;
+}
+
+.print-summary span {
+    display: block;
+    margin: 2px 0;
+}
+
+.print-summary table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.print-summary th,
+.print-summary td {
+    padding: 3px 5px;
+    border-bottom: 1px solid #d1d5db;
+    text-align: left;
+    font-size: 8px;
+}
+
+.print-summary td {
+    text-align: right;
+}
+
+.print-note {
+    min-height: 12mm;
+    padding: 6px;
+    border: 1px solid #111;
+}
+
+.signature-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-top: 14px;
+    break-inside: avoid;
+}
+
+.signature-grid > div {
+    min-height: 29mm;
+    text-align: center;
+}
+
+.signature-grid span,
+.signature-grid strong {
+    display: block;
+}
+
+.signature-grid strong {
+    margin-top: 20mm;
+    text-decoration: underline;
+}
+
+.print-footnote {
+    margin-top: 8px;
+    font-size: 7px;
+    font-style: italic;
+}
+
+@media (max-width: 850px) {
+    .print-report-root {
+        padding: 10px;
+    }
+
+    .kpi-print-sheet {
+        width: 100%;
+        min-height: auto;
+        padding: 16px;
+    }
+}
+
+@media print {
+    @page {
+        size: A4 portrait;
+        margin: 8mm;
+    }
+
+    body.kpi-printing {
+        background: #fff;
+    }
+
+    body.kpi-printing .app,
+    body.kpi-printing .print-toolbar {
+        display: none !important;
+    }
+
+    body.kpi-printing .print-report-root {
+        position: static;
+        overflow: visible;
+        padding: 0;
+        background: #fff;
+    }
+
+    body.kpi-printing .kpi-print-sheet {
+        width: auto;
+        min-height: auto;
+        margin: 0;
+        padding: 0;
+        box-shadow: none;
+    }
+
+    .print-table tr,
+    .print-summary,
+    .signature-grid {
+        break-inside: avoid;
+    }
+}
+
 body {
     font-family: 'Segoe UI', Tahoma, sans-serif;
     background: #f4f5f7;
