@@ -4,14 +4,13 @@ import { MONTHS, calculatedTier, defaultPeriod, formatRule } from '../lib/kpi.js
 
 const WORK_DAYS = Number(window.APP_CONFIG?.workDays || 26);
 
-export default function InputKpi({ role, currentUser, definitions, onSaved }) {
-  const locked = role === 'staff';
-  const [position, setPosition] = useState(locked ? currentUser?.posisi || '' : '');
-  const [name, setName] = useState(locked ? currentUser?.nama || '' : '');
+export default function InputKpi({ assessableUsers, definitions, onSaved }) {
+  const [subjectId, setSubjectId] = useState('');
   const [period, setPeriod] = useState(defaultPeriod());
   const [answers, setAnswers] = useState({});
   const [attendance, setAttendance] = useState({ sakit: 0, izin: 0, alpa: 0, cuti: 0 });
-  const definition = definitions[position];
+  const subject = assessableUsers.find((user) => user.id === Number(subjectId));
+  const definition = definitions[subject?.posisi];
 
   function updateAnswer(id, field, value) {
     setAnswers((current) => ({ ...current, [id]: { actualValue: '', link: '', ...current[id], [field]: value } }));
@@ -19,14 +18,13 @@ export default function InputKpi({ role, currentUser, definitions, onSaved }) {
 
   async function submit() {
     const result = await api('submitKpi', {
-      selectedPosisi: position,
-      selectedNama: name,
+      subjectUserId: Number(subjectId),
       selectedPeriode: period,
       draftAnswers: answers,
       draftKehadiran: attendance,
     });
     if (!result.success) return alert(result.error || 'Submission gagal.');
-    alert(`Submission ${period} berhasil dikirim.`);
+    alert(`Penilaian ${period} berhasil disimpan.`);
     setAnswers({});
     setAttendance({ sakit: 0, izin: 0, alpa: 0, cuti: 0 });
     onSaved();
@@ -39,15 +37,15 @@ export default function InputKpi({ role, currentUser, definitions, onSaved }) {
         {MONTHS.map((month) => <option key={month}>{month} {new Date().getFullYear()}</option>)}
       </select>
       <label>Posisi / Jabatan</label>
-      <select value={position} disabled={locked} onChange={(event) => { setPosition(event.target.value); setAnswers({}); }}>
-        <option value="">-- Pilih Posisi --</option>
-        {Object.keys(definitions).map((item) => <option key={item}>{item}</option>)}
+      <input type="text" value={subject?.posisi || ''} disabled />
+      <label>Akun yang Dinilai</label>
+      <select value={subjectId} onChange={(event) => { setSubjectId(event.target.value); setAnswers({}); }}>
+        <option value="">-- Pilih anggota tim --</option>
+        {assessableUsers.map((user) => <option key={user.id} value={user.id}>{user.nama} - {user.posisi}</option>)}
       </select>
-      <label>Nama Karyawan</label>
-      <input type="text" value={name} disabled={locked} onChange={(event) => setName(event.target.value)} />
     </div>
     {definition && <div className="card">
-      <h3 className="card-title">Form KPI - {position}</h3>
+      <h3 className="card-title">Form KPI - {subject.nama}</h3>
       {definition.kpis.map((kpi) => {
         const answer = answers[kpi.id] || {};
         const tier = calculatedTier(kpi, answer.actualValue);
@@ -73,7 +71,7 @@ export default function InputKpi({ role, currentUser, definitions, onSaved }) {
         <label>{key[0].toUpperCase() + key.slice(1)} (hari)</label>
         <input type="number" min="0" max={WORK_DAYS} value={attendance[key]} onChange={(event) => setAttendance({ ...attendance, [key]: Number(event.target.value) })} />
       </div>)}</div>
-      <div className="actions"><button className="btn secondary" onClick={() => setAnswers({})}>Reset</button><button className="btn" onClick={submit}>Submit untuk Approval</button></div>
+      <div className="actions"><button className="btn secondary" onClick={() => setAnswers({})}>Reset</button><button className="btn" onClick={submit}>Simpan Penilaian</button></div>
     </div>}
   </>;
 }

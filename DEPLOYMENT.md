@@ -120,12 +120,11 @@ Import harus selesai tanpa error dan menghasilkan enam tabel.
 
 ## 6. Buat konfigurasi production
 
-Generate hash PIN admin dan leader di komputer lokal. Gunakan PIN berbeda dengan
-minimal 8 karakter:
+Generate hash password admin di komputer lokal. Gunakan password unik minimal
+10 karakter:
 
 ```bash
-php -r "echo password_hash('GANTI_PIN_ADMIN', PASSWORD_DEFAULT), PHP_EOL;"
-php -r "echo password_hash('GANTI_PIN_LEADER', PASSWORD_DEFAULT), PHP_EOL;"
+php -r "echo password_hash('GANTI_PASSWORD_ADMIN', PASSWORD_DEFAULT), PHP_EOL;"
 ```
 
 Di root aplikasi, buat file `.env` dengan permission `600` atau `640`:
@@ -139,8 +138,9 @@ KPI_DB_PORT="3306"
 KPI_DB_NAME="CPANEL_USER_kpi"
 KPI_DB_USER="CPANEL_USER_kpiuser"
 KPI_DB_PASS="GANTI_DENGAN_PASSWORD_DATABASE"
-KPI_ADMIN_PIN_HASH="$2y$...HASIL_PASSWORD_HASH_ADMIN..."
-KPI_LEADER_PIN_HASH="$2y$...HASIL_PASSWORD_HASH_LEADER..."
+KPI_ADMIN_USERNAME="admin"
+KPI_ADMIN_EMAIL="admin@domain-perusahaan.com"
+KPI_ADMIN_PASSWORD_HASH="$2y$...HASIL_PASSWORD_HASH_ADMIN..."
 KPI_WORK_DAYS="26"
 KPI_ALLOW_SCHEMA_MIGRATIONS="0"
 KPI_SESSION_IDLE_TIMEOUT="1800"
@@ -152,7 +152,14 @@ KPI_MAX_REQUEST_BYTES="1048576"
 ```
 
 Tanda kutip pada nilai hash wajib dipertahankan karena hash mengandung karakter
-`$`.
+`$`. Setelah `.env` siap, jalankan dari Terminal cPanel:
+
+```bash
+php init_db.php
+```
+
+Perintah tersebut membuat atau memigrasikan tabel akun, membuat akun admin awal,
+dan aman dijalankan saat `KPI_ALLOW_SCHEMA_MIGRATIONS=0`.
 
 Jika MySQL hosting memakai hostname atau port khusus, ganti `localhost` dan
 `3306` sesuai informasi provider.
@@ -185,12 +192,12 @@ Alamat HTTP harus berpindah ke HTTPS.
 ## 8. Uji aplikasi
 
 1. Buka `https://kpi.arvadigital.web.id/`.
-2. Login dengan `KPI_ADMIN_PIN`.
+2. Login dengan `KPI_ADMIN_USERNAME` atau `KPI_ADMIN_EMAIL` dan password admin.
 3. Buka Pengaturan Form KPI dan pastikan posisi tampil.
-4. Tambahkan satu user dengan PIN unik.
-5. Logout dan login sebagai user tersebut.
-6. Buat satu input KPI percobaan.
-7. Login sebagai leader dan uji approval.
+4. Tambahkan akun Manager, Supervisor, dan Staff dengan password unik.
+5. Atur akun yang boleh dinilai pada masing-masing Manager/Supervisor.
+6. Logout dan login sebagai Manager atau Supervisor.
+7. Buat satu penilaian KPI lalu pastikan Staff hanya dapat melihat hasil.
 8. Pastikan tidak ada error pada cPanel **Errors**.
 9. Pastikan log menampilkan event `[KPI Audit]` untuk aktivitas sensitif.
 
@@ -233,6 +240,7 @@ Di cPanel **Git Version Control**:
 2. Klik **Update from Remote**.
 3. Pastikan commit terbaru sudah aktif.
 4. Jangan menghapus atau menimpa `.env`.
+5. Jika rilis mengubah schema, jalankan `php init_db.php` dari Terminal cPanel.
 
 Backup database sebelum perubahan besar.
 
@@ -255,8 +263,8 @@ Periksa cPanel **Errors**. Pastikan versi PHP minimal 8.2 dan extension
 
 ### Login selalu gagal
 
-Pastikan `.env` terbaca, PIN tidak mengandung spasi tanpa sengaja, dan PIN user
-berbeda dari PIN admin/leader.
+Pastikan `.env` terbaca, `php init_db.php` sudah dijalankan, akun aktif, serta
+username/email dan password yang digunakan sesuai.
 
 ### Clone GitHub gagal
 

@@ -25,7 +25,7 @@ function getDb(): PDO
     return $pdo;
 }
 
-function ensureAppSchema(?PDO $pdo = null): void
+function ensureAppSchema(?PDO $pdo = null, bool $force = false): void
 {
     static $ready = false;
     if ($ready) {
@@ -33,11 +33,26 @@ function ensureAppSchema(?PDO $pdo = null): void
     }
 
     $pdo = $pdo ?? getDb();
-    if (!ALLOW_SCHEMA_MIGRATIONS) {
+    if (!ALLOW_SCHEMA_MIGRATIONS && !$force) {
         $ready = true;
         return;
     }
 
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS users (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            username VARCHAR(64) NULL UNIQUE,
+            email VARCHAR(255) NULL UNIQUE,
+            password_hash VARCHAR(255) NULL,
+            account_role VARCHAR(20) NOT NULL DEFAULT 'staff',
+            posisi VARCHAR(255) NOT NULL,
+            is_active TINYINT(1) NOT NULL DEFAULT 1,
+            pin VARCHAR(32) NULL UNIQUE,
+            pin_hash VARCHAR(255) NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+    );
     $pdo->exec(
         "CREATE TABLE IF NOT EXISTS app_settings (
             setting_key VARCHAR(100) PRIMARY KEY,
@@ -62,6 +77,37 @@ function ensureAppSchema(?PDO $pdo = null): void
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
     );
+    $userColumns = [
+        'username' => "ALTER TABLE users ADD username VARCHAR(64) NULL UNIQUE AFTER name",
+        'email' => "ALTER TABLE users ADD email VARCHAR(255) NULL UNIQUE AFTER username",
+        'password_hash' => "ALTER TABLE users ADD password_hash VARCHAR(255) NULL AFTER email",
+        'account_role' => "ALTER TABLE users ADD account_role VARCHAR(20) NOT NULL DEFAULT 'staff' AFTER password_hash",
+        'is_active' => "ALTER TABLE users ADD is_active TINYINT(1) NOT NULL DEFAULT 1 AFTER posisi",
+    ];
+    foreach ($userColumns as $column => $sql) {
+        if (!$pdo->query("SHOW COLUMNS FROM users LIKE " . $pdo->quote($column))->fetch()) {
+            $pdo->exec($sql);
+        }
+    }
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS assessment_assignments (
+            evaluator_id INT NOT NULL,
+            subject_id INT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (evaluator_id, subject_id),
+            CONSTRAINT fk_assessment_evaluator
+                FOREIGN KEY (evaluator_id) REFERENCES users(id) ON DELETE CASCADE,
+            CONSTRAINT fk_assessment_subject
+                FOREIGN KEY (subject_id) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+    );
+    if (!$pdo->query("SHOW COLUMNS FROM submissions LIKE 'evaluator_user_id'")->fetch()) {
+        $pdo->exec(
+            'ALTER TABLE submissions ADD evaluator_user_id INT NULL AFTER user_id,
+             ADD CONSTRAINT fk_submissions_evaluator
+             FOREIGN KEY (evaluator_user_id) REFERENCES users(id) ON DELETE SET NULL'
+        );
+    }
     $actualValueColumn = $pdo->query("SHOW COLUMNS FROM submission_answers LIKE 'actual_value'")->fetch();
     if (!$actualValueColumn) {
         $pdo->exec('ALTER TABLE submission_answers ADD actual_value DECIMAL(15,4) NULL AFTER tier');
@@ -88,6 +134,24 @@ function ensureAppSchema(?PDO $pdo = null): void
                 (int) $legacyUser['id'],
             ]);
         }
+    }
+
+    $admin = $pdo->prepare('SELECT id FROM users WHERE account_role = ? LIMIT 1');
+    $admin->execute(['admin']);
+    if (!$admin->fetchColumn() && ADMIN_PASSWORD_HASH !== '') {
+        $insertAdmin = $pdo->prepare(
+            'INSERT INTO users
+             (name, username, email, password_hash, account_role, posisi, is_active)
+             VALUES (?, ?, ?, ?, ?, ?, 1)'
+        );
+        $insertAdmin->execute([
+            'Administrator',
+            ADMIN_USERNAME,
+            ADMIN_EMAIL,
+            ADMIN_PASSWORD_HASH,
+            'admin',
+            'Administrator',
+        ]);
     }
     $ready = true;
 }

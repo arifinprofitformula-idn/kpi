@@ -1,13 +1,13 @@
 import { useState } from 'react';
-import { api } from '../lib/api.js';
 import { achievementLabel } from '../lib/kpi.js';
 
-function SubmissionModal({ submission, onClose, onApprove, onRevise }) {
+function SubmissionModal({ submission, onClose }) {
   const [label, cls] = achievementLabel(submission.scoreCalc.finalAchievement);
   return <div className="modal-overlay" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
     <div className="modal"><button className="close-button" onClick={onClose} aria-label="Tutup">x</button>
       <h3>{submission.nama} - {submission.posisi}</h3>
       <p className="card-subtitle">{submission.periode} | {submission.tanggal} | {submission.status}</p>
+      <p className="card-subtitle">Dinilai oleh: {submission.evaluatorName || 'Data lama'}</p>
       {submission.catatan && <div className="note-box">{submission.catatan}</div>}
       {(submission.definition?.kpis || []).map((kpi) => {
         const answer = submission.kpiAnswers.find((item) => item.id === kpi.id);
@@ -20,30 +20,15 @@ function SubmissionModal({ submission, onClose, onApprove, onRevise }) {
         </div>;
       })}
       <div className="summary-row"><div className="summary-box"><div className="val">{submission.scoreCalc.scoreKPI}</div><div className="lab">Score KPI</div></div><div className="summary-box"><div className={`val ${cls}`}>{submission.scoreCalc.finalAchievement}%</div><div className="lab">{label}</div></div></div>
-      {submission.status === 'Pending' && <div className="actions"><button className="btn danger" onClick={() => onRevise(submission.id)}>Minta Revisi</button><button className="btn" onClick={() => onApprove(submission.id)}>Approve</button></div>}
     </div>
   </div>;
 }
 
-export default function Approval({ submissions, onRefresh }) {
+export default function Approval({ submissions }) {
   const [filter, setFilter] = useState('Semua');
   const [selected, setSelected] = useState(null);
   const periods = ['Semua', ...new Set(submissions.map((item) => item.periode))];
   const filtered = filter === 'Semua' ? submissions : submissions.filter((item) => item.periode === filter);
-
-  async function approve(id) {
-    const result = await api('approveSubmission', { id });
-    if (!result.success) return alert(result.error);
-    setSelected(null); onRefresh();
-  }
-
-  async function revise(id) {
-    const note = prompt('Catatan revisi:');
-    if (!note) return;
-    const result = await api('requestRevisi', { id, note });
-    if (!result.success) return alert(result.error);
-    setSelected(null); onRefresh();
-  }
 
   return <>
     <div className="card filter-row"><label>Filter Periode</label><select value={filter} onChange={(event) => setFilter(event.target.value)}>{periods.map((item) => <option key={item}>{item}</option>)}</select></div>
@@ -56,6 +41,6 @@ export default function Approval({ submissions, onRefresh }) {
       <tbody>{filtered.map((item) => <tr key={item.id} onClick={() => setSelected(item)}>
         <td>{item.nama}</td><td>{item.posisi}</td><td>{item.periode}</td><td><span className={`status-badge status-${item.status.toLowerCase()}`}>{item.status}</span></td><td>{item.scoreCalc.scoreKPI}</td><td>{item.scoreCalc.finalAchievement}%</td>
       </tr>)}</tbody></table>{filtered.length === 0 && <div className="empty-state">Belum ada submission.</div>}</div>
-    {selected && <SubmissionModal submission={selected} onClose={() => setSelected(null)} onApprove={approve} onRevise={revise} />}
+    {selected && <SubmissionModal submission={selected} onClose={() => setSelected(null)} />}
   </>;
 }

@@ -4,6 +4,93 @@
     padding: 0;
 }
 
+.account-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px 22px;
+}
+
+.account-form-grid .form-group {
+    margin-bottom: 0;
+}
+
+.account-active-field,
+.account-subject-field {
+    grid-column: 1 / -1;
+}
+
+.checkbox-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin: 0;
+    color: #344054;
+    font-weight: 500;
+}
+
+.checkbox-row input {
+    width: 16px;
+    height: 16px;
+    margin-top: 2px;
+}
+
+.checkbox-row span,
+.checkbox-row small {
+    display: block;
+}
+
+.checkbox-row small {
+    margin-top: 3px;
+    color: #64748b;
+    font-size: 11px;
+}
+
+.assignment-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    max-height: 220px;
+    overflow-y: auto;
+    padding: 12px;
+    border: 1px solid #d8dee9;
+    border-radius: 10px;
+    background: #f8fafc;
+}
+
+.assignment-list .checkbox-row {
+    padding: 10px;
+    border: 1px solid #e4e8ee;
+    border-radius: 8px;
+    background: #fff;
+}
+
+.assignment-empty {
+    padding: 14px;
+    border: 1px dashed #cbd5df;
+    border-radius: 10px;
+    color: #64748b;
+    background: #f8fafc;
+    font-size: 13px;
+}
+
+.account-modal {
+    width: min(760px, 100%);
+}
+
+.account-identity {
+    display: block;
+    margin-top: 4px;
+    color: #64748b;
+    font-size: 11px;
+}
+
+@media (max-width: 700px) {
+    .account-form-grid,
+    .assignment-list {
+        grid-template-columns: 1fr;
+    }
+}
+
 body {
     font-family: 'Segoe UI', Tahoma, sans-serif;
     background: #f4f5f7;

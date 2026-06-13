@@ -14,7 +14,12 @@ try {
         "CREATE TABLE IF NOT EXISTS users (
             id INT AUTO_INCREMENT PRIMARY KEY,
             name VARCHAR(255) NOT NULL,
+            username VARCHAR(64) NULL UNIQUE,
+            email VARCHAR(255) NULL UNIQUE,
+            password_hash VARCHAR(255) NULL,
+            account_role VARCHAR(20) NOT NULL DEFAULT 'staff',
             posisi VARCHAR(255) NOT NULL,
+            is_active TINYINT(1) NOT NULL DEFAULT 1,
             pin VARCHAR(32) NULL UNIQUE,
             pin_hash VARCHAR(255) NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -24,6 +29,7 @@ try {
         "CREATE TABLE IF NOT EXISTS submissions (
             id INT AUTO_INCREMENT PRIMARY KEY,
             user_id INT NULL,
+            evaluator_user_id INT NULL,
             nama VARCHAR(255) NOT NULL,
             posisi VARCHAR(255) NOT NULL,
             periode VARCHAR(64) NOT NULL,
@@ -39,7 +45,18 @@ try {
             final_achievement DECIMAL(5,2) NOT NULL DEFAULT 0,
             catatan TEXT DEFAULT '',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (evaluator_user_id) REFERENCES users(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+    );
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS assessment_assignments (
+            evaluator_id INT NOT NULL,
+            subject_id INT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (evaluator_id, subject_id),
+            FOREIGN KEY (evaluator_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (subject_id) REFERENCES users(id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
     );
     $pdo->exec(
@@ -62,7 +79,7 @@ try {
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
     );
-    ensureAppSchema($pdo);
+    ensureAppSchema($pdo, true);
     fwrite(STDOUT, "Database schema is ready.\n");
 } catch (Throwable $ex) {
     fwrite(STDERR, "Migration failed: {$ex->getMessage()}\n");

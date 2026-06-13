@@ -112,6 +112,9 @@ function handleLoadData(): void
             'currentUser' => $currentUser,
             'submissions' => loadSubmissions($role, $currentUser),
             'users' => [],
+            'assessableUsers' => isset($currentUser['id'])
+                ? loadAssessableUsers((int) $currentUser['id'])
+                : [],
             'posisiData' => getKpiDefinitions(),
         ];
 
@@ -130,6 +133,7 @@ function handleLoadData(): void
             'currentUser' => $currentUser,
             'submissions' => [],
             'users' => [],
+            'assessableUsers' => [],
             'posisiData' => enrichKpiDefinitions(POSISI_DATA),
             'databaseAvailable' => false,
             'warning' => 'Admin berhasil masuk, tetapi database belum dapat diakses. Periksa konfigurasi database hosting.',
@@ -143,8 +147,7 @@ function handleSubmit(array $payload): void
 {
     $userRole = $_SESSION['role'] ?? 'api';
     $currentUser = $_SESSION['current_user'] ?? null;
-    $selectedPosisi = trim($payload['selectedPosisi'] ?? '');
-    $selectedNama = trim($payload['selectedNama'] ?? '');
+    $subjectUserId = (int) ($payload['subjectUserId'] ?? 0);
     $selectedPeriode = trim($payload['selectedPeriode'] ?? '');
     $draftAnswers = $payload['draftAnswers'] ?? [];
     $draftKehadiran = $payload['draftKehadiran'] ?? ['sakit' => 0, 'izin' => 0, 'alpa' => 0, 'cuti' => 0];
@@ -152,18 +155,26 @@ function handleSubmit(array $payload): void
         jsonResponse(['success' => false, 'error' => 'Format data KPI tidak valid.']);
     }
 
-    if ($userRole === 'staff' && $currentUser) {
-        $selectedNama = $currentUser['nama'];
-        $selectedPosisi = $currentUser['posisi'];
+    if (!$currentUser || !in_array($userRole, ['admin', 'manager', 'supervisor'], true)) {
+        jsonResponse(['success' => false, 'error' => 'Akun ini tidak memiliki akses untuk melakukan penilaian.'], 403);
+    }
+    if (!evaluatorCanAssess((int) $currentUser['id'], $subjectUserId)) {
+        jsonResponse(['success' => false, 'error' => 'Anda tidak ditugaskan untuk menilai akun tersebut.'], 403);
+    }
+    if ($selectedPeriode === '' || strlen($selectedPeriode) > 64) {
+        jsonResponse(['success' => false, 'error' => 'Periode penilaian tidak valid.']);
     }
 
-    if ($selectedNama === '' || $selectedPosisi === '' || $selectedPeriode === '') {
-        jsonResponse(['success' => false, 'error' => 'Nama, posisi, dan periode harus diisi.']);
+    $subjectStmt = getDb()->prepare(
+        'SELECT id, name, posisi FROM users WHERE id = ? AND is_active = 1 LIMIT 1'
+    );
+    $subjectStmt->execute([$subjectUserId]);
+    $subject = $subjectStmt->fetch();
+    if (!$subject) {
+        jsonResponse(['success' => false, 'error' => 'Akun yang dinilai tidak ditemukan.'], 404);
     }
-    if (strlen($selectedNama) > 255 || strlen($selectedPosisi) > 255 || strlen($selectedPeriode) > 64) {
-        jsonResponse(['success' => false, 'error' => 'Data identitas atau periode terlalu panjang.']);
-    }
-
+    $selectedNama = $subject['name'];
+    $selectedPosisi = $subject['posisi'];
     $definitions = getKpiDefinitions();
     if (!isset($definitions[$selectedPosisi])) {
         jsonResponse(['success' => false, 'error' => 'Posisi tidak valid.']);
@@ -224,15 +235,15 @@ function handleSubmit(array $payload): void
     $pdo = getDb();
     $pdo->beginTransaction();
     try {
-        $stmt = $pdo->prepare('INSERT INTO submissions (user_id, nama, posisi, periode, tanggal, status, kehadiran_sakit, kehadiran_izin, kehadiran_alpa, kehadiran_cuti, score_kpi, pct_kpi, pct_kehadiran, final_achievement, catatan) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-        $userId = $currentUser['id'] ?? null;
+        $stmt = $pdo->prepare('INSERT INTO submissions (user_id, evaluator_user_id, nama, posisi, periode, tanggal, status, kehadiran_sakit, kehadiran_izin, kehadiran_alpa, kehadiran_cuti, score_kpi, pct_kpi, pct_kehadiran, final_achievement, catatan) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
         $stmt->execute([
-            $userId,
+            $subjectUserId,
+            (int) $currentUser['id'],
             $selectedNama,
             $selectedPosisi,
             $selectedPeriode,
             date('d M Y'),
-            'Pending',
+            'Approved',
             intval($draftKehadiran['sakit'] ?? 0),
             intval($draftKehadiran['izin'] ?? 0),
             intval($draftKehadiran['alpa'] ?? 0),
@@ -267,7 +278,7 @@ function handleSubmit(array $payload): void
 
 function handleApprove(array $payload): void
 {
-    if (!isLeader()) {
+    if (!isAdmin()) {
         jsonResponse(['success' => false, 'error' => 'Akses ditolak.'], 403);
     }
 
@@ -285,7 +296,7 @@ function handleApprove(array $payload): void
 
 function handleRevisi(array $payload): void
 {
-    if (!isLeader()) {
+    if (!isAdmin()) {
         jsonResponse(['success' => false, 'error' => 'Akses ditolak.'], 403);
     }
 
@@ -313,49 +324,151 @@ function handleSaveUser(array $payload): void
 
     $id = intval($payload['id'] ?? 0);
     $name = trim($payload['name'] ?? '');
+    $username = strtolower(trim($payload['username'] ?? ''));
+    $email = strtolower(trim($payload['email'] ?? ''));
+    $role = strtolower(trim($payload['role'] ?? 'staff'));
     $posisi = trim($payload['posisi'] ?? '');
-    $pin = trim($payload['pin'] ?? '');
+    $password = (string) ($payload['password'] ?? '');
+    $isActive = filter_var($payload['isActive'] ?? true, FILTER_VALIDATE_BOOL);
+    $subjectIds = $payload['subjectIds'] ?? [];
 
-    if ($name === '' || $posisi === '' || ($id <= 0 && $pin === '')) {
-        jsonResponse(['success' => false, 'error' => 'Nama, posisi, dan PIN user baru harus diisi.']);
+    if (
+        $name === ''
+        || $username === ''
+        || $email === ''
+        || $posisi === ''
+        || ($id <= 0 && $password === '')
+    ) {
+        jsonResponse(['success' => false, 'error' => 'Nama, username, email, posisi, dan password akun baru harus diisi.']);
     }
-    if (strlen($name) > 255 || strlen($posisi) > 255) {
-        jsonResponse(['success' => false, 'error' => 'Nama atau posisi terlalu panjang.']);
+    if (
+        strlen($name) > 255
+        || strlen($posisi) > 255
+        || preg_match('/^[a-z0-9._-]{3,64}$/', $username) !== 1
+        || filter_var($email, FILTER_VALIDATE_EMAIL) === false
+        || strlen($email) > 255
+        || !in_array($role, ['admin', 'manager', 'supervisor', 'staff'], true)
+        || !is_array($subjectIds)
+    ) {
+        jsonResponse(['success' => false, 'error' => 'Data akun tidak valid. Periksa username, email, role, dan posisi.']);
     }
-    if ($pin !== '' && (strlen($pin) < 8 || strlen($pin) > 64)) {
-        jsonResponse(['success' => false, 'error' => 'PIN harus terdiri dari 8 sampai 64 karakter.']);
+    if ($password !== '' && (strlen($password) < 10 || strlen($password) > 128)) {
+        jsonResponse(['success' => false, 'error' => 'Password harus terdiri dari 10 sampai 128 karakter.']);
     }
-
-    if (!isset(getKpiDefinitions()[$posisi])) {
+    if ($role !== 'admin' && !isset(getKpiDefinitions()[$posisi])) {
         jsonResponse(['success' => false, 'error' => 'Posisi tidak tersedia pada pengaturan form KPI.']);
     }
 
-    if ($pin !== '' && isPrivilegedPin($pin)) {
-        jsonResponse(['success' => false, 'error' => 'PIN bertabrakan dengan kode sistem.']);
-    }
-
-    if ($pin !== '') {
-        if (isUserPinInUse($pin, $id)) {
-            jsonResponse(['success' => false, 'error' => 'PIN sudah digunakan oleh user lain.']);
-        }
-    }
-
+    $subjectIds = array_values(array_unique(array_filter(
+        array_map('intval', $subjectIds),
+        fn ($subjectId) => $subjectId > 0 && $subjectId !== $id
+    )));
     $pdo = getDb();
-    if ($id > 0) {
-        if ($pin === '') {
-            $stmt = $pdo->prepare('UPDATE users SET name = ?, posisi = ? WHERE id = ?');
-            $stmt->execute([$name, $posisi, $id]);
-        } else {
-            $stmt = $pdo->prepare('UPDATE users SET name = ?, posisi = ?, pin = NULL, pin_hash = ? WHERE id = ?');
-            $stmt->execute([$name, $posisi, password_hash($pin, PASSWORD_DEFAULT), $id]);
+    if ($subjectIds !== []) {
+        $placeholders = implode(',', array_fill(0, count($subjectIds), '?'));
+        $subjectStmt = $pdo->prepare(
+            "SELECT id, account_role FROM users WHERE id IN ({$placeholders}) AND is_active = 1"
+        );
+        $subjectStmt->execute($subjectIds);
+        $subjects = $subjectStmt->fetchAll();
+        if (count($subjects) !== count($subjectIds)) {
+            jsonResponse(['success' => false, 'error' => 'Salah satu akun yang dinilai tidak tersedia.']);
         }
-    } else {
-        $stmt = $pdo->prepare('INSERT INTO users (name, posisi, pin, pin_hash) VALUES (?, ?, NULL, ?)');
-        $stmt->execute([$name, $posisi, password_hash($pin, PASSWORD_DEFAULT)]);
-        $id = (int) $pdo->lastInsertId();
+        foreach ($subjects as $subject) {
+            if (!canEvaluateRole($role, $subject['account_role'])) {
+                jsonResponse([
+                    'success' => false,
+                    'error' => ucfirst($role) . ' tidak dapat ditugaskan menilai akun ' . $subject['account_role'] . '.',
+                ]);
+            }
+        }
     }
 
-    securityAudit('user_saved', ['target_user_id' => $id, 'position' => $posisi]);
+    if ($id === (int) ($_SESSION['current_user']['id'] ?? 0) && (!$isActive || $role !== 'admin')) {
+        jsonResponse(['success' => false, 'error' => 'Admin tidak dapat menonaktifkan atau mengubah role akunnya sendiri.']);
+    }
+
+    $pdo->beginTransaction();
+    try {
+        if ($id > 0) {
+            if ($password === '') {
+                $stmt = $pdo->prepare(
+                    'UPDATE users SET name = ?, username = ?, email = ?, account_role = ?,
+                     posisi = ?, is_active = ? WHERE id = ?'
+                );
+                $stmt->execute([$name, $username, $email, $role, $posisi, $isActive ? 1 : 0, $id]);
+            } else {
+                $stmt = $pdo->prepare(
+                    'UPDATE users SET name = ?, username = ?, email = ?, password_hash = ?,
+                     account_role = ?, posisi = ?, is_active = ?, pin = NULL, pin_hash = NULL
+                     WHERE id = ?'
+                );
+                $stmt->execute([
+                    $name,
+                    $username,
+                    $email,
+                    password_hash($password, PASSWORD_DEFAULT),
+                    $role,
+                    $posisi,
+                    $isActive ? 1 : 0,
+                    $id,
+                ]);
+            }
+        } else {
+            $stmt = $pdo->prepare(
+                'INSERT INTO users
+                 (name, username, email, password_hash, account_role, posisi, is_active)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)'
+            );
+            $stmt->execute([
+                $name,
+                $username,
+                $email,
+                password_hash($password, PASSWORD_DEFAULT),
+                $role,
+                $posisi,
+                $isActive ? 1 : 0,
+            ]);
+            $id = (int) $pdo->lastInsertId();
+        }
+
+        $pdo->prepare('DELETE FROM assessment_assignments WHERE evaluator_id = ?')->execute([$id]);
+        $insertAssignment = $pdo->prepare(
+            'INSERT INTO assessment_assignments (evaluator_id, subject_id) VALUES (?, ?)'
+        );
+        foreach ($subjectIds as $subjectId) {
+            $insertAssignment->execute([$id, $subjectId]);
+        }
+
+        $incomingStmt = $pdo->prepare(
+            'SELECT assignment.evaluator_id, evaluator.account_role
+             FROM assessment_assignments assignment
+             INNER JOIN users evaluator ON evaluator.id = assignment.evaluator_id
+             WHERE assignment.subject_id = ?'
+        );
+        $incomingStmt->execute([$id]);
+        $deleteIncoming = $pdo->prepare(
+            'DELETE FROM assessment_assignments WHERE evaluator_id = ? AND subject_id = ?'
+        );
+        foreach ($incomingStmt->fetchAll() as $incoming) {
+            if (!canEvaluateRole($incoming['account_role'], $role)) {
+                $deleteIncoming->execute([(int) $incoming['evaluator_id'], $id]);
+            }
+        }
+        $pdo->commit();
+    } catch (PDOException $ex) {
+        $pdo->rollBack();
+        if ((string) $ex->getCode() === '23000') {
+            jsonResponse(['success' => false, 'error' => 'Username atau email sudah digunakan akun lain.']);
+        }
+        throw $ex;
+    }
+
+    securityAudit('user_saved', [
+        'target_user_id' => $id,
+        'role' => $role,
+        'subject_count' => count($subjectIds),
+    ]);
     jsonResponse(['success' => true]);
 }
 
@@ -369,6 +482,9 @@ function handleDeleteUser(array $payload): void
     if ($id <= 0) {
         jsonResponse(['success' => false, 'error' => 'ID user tidak valid.']);
     }
+    if ($id === (int) ($_SESSION['current_user']['id'] ?? 0)) {
+        jsonResponse(['success' => false, 'error' => 'Admin tidak dapat menghapus akunnya sendiri.']);
+    }
 
     $pdo = getDb();
     $stmt = $pdo->prepare('DELETE FROM users WHERE id = ?');
@@ -379,49 +495,35 @@ function handleDeleteUser(array $payload): void
 
 function handleLogin(array $payload): void
 {
-    $pin = trim((string) ($payload['pin'] ?? ''));
-    if ($pin === '' || strlen($pin) > 64) {
-        jsonResponse(['success' => false, 'error' => 'PIN tidak dikenali.']);
+    $identifier = strtolower(trim((string) ($payload['identifier'] ?? '')));
+    $password = (string) ($payload['password'] ?? '');
+    if ($identifier === '' || strlen($identifier) > 255 || $password === '' || strlen($password) > 128) {
+        jsonResponse(['success' => false, 'error' => 'Username/email atau password tidak valid.']);
     }
 
-    if (verifyAdminPin($pin)) {
-        $_SESSION['role'] = 'admin';
-        $_SESSION['current_user'] = null;
-    } elseif (verifyLeaderPin($pin)) {
-        $_SESSION['role'] = 'leader';
-        $_SESSION['current_user'] = null;
-    } else {
-        $rateLimit = loginRateLimitStatus();
-        if ($rateLimit['blocked']) {
-            header('Retry-After: ' . $rateLimit['retry_after']);
-            jsonResponse([
-                'success' => false,
-                'error' => 'Terlalu banyak percobaan login. Coba kembali beberapa saat lagi.',
-            ], 429);
-        }
-
-        $user = getUserByPin($pin);
-        if (!$user) {
-            recordFailedLogin();
-            usleep(random_int(100000, 300000));
-            jsonResponse(['success' => false, 'error' => 'PIN tidak dikenali.']);
-        }
-        $_SESSION['role'] = 'staff';
-        $_SESSION['current_user'] = [
-            'id' => (int) $user['id'],
-            'nama' => $user['name'],
-            'posisi' => $user['posisi'],
-        ];
+    $rateLimit = loginRateLimitStatus();
+    if ($rateLimit['blocked']) {
+        header('Retry-After: ' . $rateLimit['retry_after']);
+        jsonResponse([
+            'success' => false,
+            'error' => 'Terlalu banyak percobaan login. Coba kembali beberapa saat lagi.',
+        ], 429);
     }
 
-    try {
-        clearLoginAttempts();
-    } catch (PDOException $ex) {
-        if (($_SESSION['role'] ?? null) === 'staff') {
-            throw $ex;
-        }
-        error_log('[KPI Database] Login attempt cleanup skipped: ' . $ex->getMessage());
+    $user = getUserByIdentifier($identifier);
+    if (!$user || !password_verify($password, (string) $user['password_hash'])) {
+        recordFailedLogin();
+        usleep(random_int(100000, 300000));
+        jsonResponse(['success' => false, 'error' => 'Username/email atau password salah.']);
     }
+    $_SESSION['role'] = $user['account_role'];
+    $_SESSION['current_user'] = normalizeUser($user);
+
+    if (password_needs_rehash((string) $user['password_hash'], PASSWORD_DEFAULT)) {
+        $rehash = getDb()->prepare('UPDATE users SET password_hash = ? WHERE id = ?');
+        $rehash->execute([password_hash($password, PASSWORD_DEFAULT), $user['id']]);
+    }
+    clearLoginAttempts();
     session_regenerate_id(true);
     $_SESSION['created_at'] = time();
     $_SESSION['last_activity'] = time();
@@ -447,7 +549,10 @@ function handleSaveKpiDefinitions(array $payload): void
     }
 
     $definitions = normalizeKpiDefinitions($rawDefinitions);
-    $activePositions = array_column(loadUsers(), 'posisi');
+    $activePositions = array_column(
+        array_filter(loadUsers(), fn ($user) => $user['role'] !== 'admin'),
+        'posisi'
+    );
     $missingPositions = array_values(array_diff(array_unique($activePositions), array_keys($definitions)));
     if ($missingPositions !== []) {
         jsonResponse([

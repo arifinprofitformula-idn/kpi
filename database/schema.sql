@@ -4,7 +4,12 @@ SET FOREIGN_KEY_CHECKS = 0;
 CREATE TABLE IF NOT EXISTS users (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
+    username VARCHAR(64) NULL UNIQUE,
+    email VARCHAR(255) NULL UNIQUE,
+    password_hash VARCHAR(255) NULL,
+    account_role VARCHAR(20) NOT NULL DEFAULT 'staff',
     posisi VARCHAR(255) NOT NULL,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
     pin VARCHAR(32) NULL UNIQUE,
     pin_hash VARCHAR(255) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -13,6 +18,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS submissions (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NULL,
+    evaluator_user_id INT NULL,
     nama VARCHAR(255) NOT NULL,
     posisi VARCHAR(255) NOT NULL,
     periode VARCHAR(64) NOT NULL,
@@ -29,7 +35,20 @@ CREATE TABLE IF NOT EXISTS submissions (
     catatan TEXT DEFAULT '',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_submissions_user
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT fk_submissions_evaluator
+        FOREIGN KEY (evaluator_user_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS assessment_assignments (
+    evaluator_id INT NOT NULL,
+    subject_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (evaluator_id, subject_id),
+    CONSTRAINT fk_assessment_evaluator
+        FOREIGN KEY (evaluator_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_assessment_subject
+        FOREIGN KEY (subject_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS submission_answers (

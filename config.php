@@ -54,10 +54,9 @@ define('DB_PORT', envInt('KPI_DB_PORT', 3306, 1, 65535));
 define('DB_NAME', envValue('KPI_DB_NAME', 'kpi_app'));
 define('DB_USER', envValue('KPI_DB_USER', 'kpi_user'));
 define('DB_PASS', envValue('KPI_DB_PASS', 'secret'));
-define('PIN_ADMIN', envValue('KPI_ADMIN_PIN', '0000'));
-define('PIN_LEADER', envValue('KPI_LEADER_PIN', '9999'));
-define('PIN_ADMIN_HASH', envValue('KPI_ADMIN_PIN_HASH'));
-define('PIN_LEADER_HASH', envValue('KPI_LEADER_PIN_HASH'));
+define('ADMIN_USERNAME', strtolower(envValue('KPI_ADMIN_USERNAME', 'admin')));
+define('ADMIN_EMAIL', strtolower(envValue('KPI_ADMIN_EMAIL', 'admin@kpi.local')));
+define('ADMIN_PASSWORD_HASH', envValue('KPI_ADMIN_PASSWORD_HASH', envValue('KPI_ADMIN_PIN_HASH')));
 define('HARI_KERJA', envInt('KPI_WORK_DAYS', 26, 1, 31));
 define('ALLOW_SCHEMA_MIGRATIONS', envBool('KPI_ALLOW_SCHEMA_MIGRATIONS', APP_ENV !== 'production'));
 define('SESSION_IDLE_TIMEOUT', envInt('KPI_SESSION_IDLE_TIMEOUT', 1800, 300, 86400));
@@ -84,36 +83,18 @@ function assertProductionConfig(): void
     if (DB_PASS === '' || in_array(DB_PASS, ['secret', 'change-me'], true) || strlen(DB_PASS) < 12) {
         $errors[] = 'KPI_DB_PASS harus kuat dan minimal 12 karakter';
     }
+    if (filter_var(ADMIN_EMAIL, FILTER_VALIDATE_EMAIL) === false) {
+        $errors[] = 'KPI_ADMIN_EMAIL wajib berupa alamat email yang valid';
+    }
     if (
-        PIN_ADMIN_HASH === ''
-        || PIN_LEADER_HASH === ''
-        || (password_get_info(PIN_ADMIN_HASH)['algo'] ?? null) === null
-        || (password_get_info(PIN_LEADER_HASH)['algo'] ?? null) === null
+        ADMIN_PASSWORD_HASH === ''
+        || (password_get_info(ADMIN_PASSWORD_HASH)['algo'] ?? null) === null
     ) {
-        $errors[] = 'KPI_ADMIN_PIN_HASH dan KPI_LEADER_PIN_HASH wajib berupa password_hash yang valid';
+        $errors[] = 'KPI_ADMIN_PASSWORD_HASH wajib berupa password_hash yang valid';
     }
     if ($errors !== []) {
         throw new RuntimeException('Konfigurasi production tidak aman: ' . implode('; ', $errors));
     }
-}
-
-function verifyAdminPin(string $pin): bool
-{
-    return PIN_ADMIN_HASH !== ''
-        ? password_verify($pin, PIN_ADMIN_HASH)
-        : hash_equals(PIN_ADMIN, $pin);
-}
-
-function verifyLeaderPin(string $pin): bool
-{
-    return PIN_LEADER_HASH !== ''
-        ? password_verify($pin, PIN_LEADER_HASH)
-        : hash_equals(PIN_LEADER, $pin);
-}
-
-function isPrivilegedPin(string $pin): bool
-{
-    return verifyAdminPin($pin) || verifyLeaderPin($pin);
 }
 
 const POSISI_DATA = [

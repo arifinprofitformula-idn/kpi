@@ -178,11 +178,14 @@ function isAdmin(): bool
         || getAuthorizedApiRole() === 'admin';
 }
 
-function isLeader(): bool
+function canEvaluateRole(string $evaluatorRole, string $subjectRole): bool
 {
-    $apiRole = getAuthorizedApiRole();
-    return (isset($_SESSION['role']) && in_array($_SESSION['role'], ['leader', 'admin'], true))
-        || in_array($apiRole, ['leader', 'admin'], true);
+    return match ($evaluatorRole) {
+        'admin' => $subjectRole === 'manager',
+        'manager' => in_array($subjectRole, ['supervisor', 'staff'], true),
+        'supervisor' => $subjectRole === 'staff',
+        default => false,
+    };
 }
 
 function ensureAuthorized(): void
@@ -191,9 +194,12 @@ function ensureAuthorized(): void
         jsonResponse(['success' => false, 'error' => 'Unauthorized'], 401);
     }
 
-    if (($_SESSION['role'] ?? null) === 'staff') {
+    if (isset($_SESSION['current_user']['id'])) {
         $userId = (int) ($_SESSION['current_user']['id'] ?? 0);
-        $stmt = getDb()->prepare('SELECT id, name, posisi FROM users WHERE id = ? LIMIT 1');
+        $stmt = getDb()->prepare(
+            'SELECT id, name, username, email, account_role, posisi
+             FROM users WHERE id = ? AND is_active = 1 LIMIT 1'
+        );
         $stmt->execute([$userId]);
         $user = $stmt->fetch();
         if (!$user) {
@@ -201,47 +207,98 @@ function ensureAuthorized(): void
             session_regenerate_id(true);
             jsonResponse(['success' => false, 'error' => 'Sesi tidak lagi valid. Silakan login kembali.'], 401);
         }
-        $_SESSION['current_user'] = [
-            'id' => (int) $user['id'],
-            'nama' => $user['name'],
-            'posisi' => $user['posisi'],
-        ];
+        $_SESSION['role'] = $user['account_role'];
+        $_SESSION['current_user'] = normalizeUser($user);
     }
 }
 
-function getUserByPin(string $pin): ?array
+function normalizeUser(array $user): array
 {
-    $pdo = getDb();
-    ensureAppSchema($pdo);
-    $stmt = $pdo->query('SELECT id, name, posisi, pin_hash FROM users WHERE pin_hash IS NOT NULL');
-    foreach ($stmt->fetchAll() as $user) {
-        if (password_verify($pin, (string) $user['pin_hash'])) {
-            unset($user['pin_hash']);
-            return $user;
-        }
-    }
-    return null;
+    return [
+        'id' => (int) $user['id'],
+        'name' => $user['name'],
+        'nama' => $user['name'],
+        'username' => $user['username'],
+        'email' => $user['email'],
+        'role' => $user['account_role'],
+        'posisi' => $user['posisi'],
+        'isActive' => !isset($user['is_active']) || (bool) $user['is_active'],
+    ];
 }
 
-function isUserPinInUse(string $pin, int $excludeId = 0): bool
+function getUserByIdentifier(string $identifier): ?array
 {
     $pdo = getDb();
     ensureAppSchema($pdo);
-    $stmt = $pdo->prepare('SELECT id, pin_hash FROM users WHERE id != ? AND pin_hash IS NOT NULL');
-    $stmt->execute([$excludeId]);
-    foreach ($stmt->fetchAll() as $user) {
-        if (password_verify($pin, (string) $user['pin_hash'])) {
-            return true;
-        }
-    }
-    return false;
+    $stmt = $pdo->prepare(
+        'SELECT id, name, username, email, password_hash, account_role, posisi, is_active
+         FROM users
+         WHERE is_active = 1 AND (LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?))
+         LIMIT 1'
+    );
+    $stmt->execute([$identifier, $identifier]);
+    $user = $stmt->fetch();
+    return $user ?: null;
 }
 
 function loadUsers(): array
 {
     $pdo = getDb();
-    $stmt = $pdo->query('SELECT id, name, posisi FROM users ORDER BY name');
-    return $stmt->fetchAll();
+    $stmt = $pdo->query(
+        'SELECT id, name, username, email, account_role, posisi, is_active
+         FROM users ORDER BY name'
+    );
+    $users = array_map('normalizeUser', $stmt->fetchAll());
+    $assignmentStmt = $pdo->query(
+        'SELECT evaluator_id, subject_id FROM assessment_assignments
+         ORDER BY evaluator_id, subject_id'
+    );
+    $assignments = [];
+    foreach ($assignmentStmt->fetchAll() as $assignment) {
+        $assignments[(int) $assignment['evaluator_id']][] = (int) $assignment['subject_id'];
+    }
+    foreach ($users as &$user) {
+        $user['subjectIds'] = $assignments[$user['id']] ?? [];
+    }
+    unset($user);
+    return $users;
+}
+
+function loadAssessableUsers(int $evaluatorId): array
+{
+    $stmt = getDb()->prepare(
+        'SELECT subject.id, subject.name, subject.username, subject.email,
+                subject.account_role, subject.posisi, subject.is_active
+         FROM assessment_assignments assignment
+         INNER JOIN users subject ON subject.id = assignment.subject_id
+         WHERE assignment.evaluator_id = ? AND subject.is_active = 1
+         ORDER BY subject.name'
+    );
+    $stmt->execute([$evaluatorId]);
+    return array_map('normalizeUser', $stmt->fetchAll());
+}
+
+function evaluatorCanAssess(int $evaluatorId, int $subjectId): bool
+{
+    if ($evaluatorId <= 0 || $subjectId <= 0 || $evaluatorId === $subjectId) {
+        return false;
+    }
+    $stmt = getDb()->prepare(
+        'SELECT evaluator.account_role AS evaluator_role,
+                subject.account_role AS subject_role,
+                assignment.subject_id
+         FROM users evaluator
+         INNER JOIN users subject ON subject.id = ?
+         LEFT JOIN assessment_assignments assignment
+           ON assignment.evaluator_id = evaluator.id AND assignment.subject_id = subject.id
+         WHERE evaluator.id = ? AND evaluator.is_active = 1 AND subject.is_active = 1
+         LIMIT 1'
+    );
+    $stmt->execute([$subjectId, $evaluatorId]);
+    $access = $stmt->fetch();
+    return $access
+        && $access['subject_id'] !== null
+        && canEvaluateRole($access['evaluator_role'], $access['subject_role']);
 }
 
 function loadSubmissionAnswers(int $submissionId): array
@@ -266,6 +323,10 @@ function normalizeSubmission(array $submission): array
     return [
         'id' => (string) $submission['id'],
         'user_id' => $submission['user_id'] !== null ? (int) $submission['user_id'] : null,
+        'evaluator_user_id' => $submission['evaluator_user_id'] !== null
+            ? (int) $submission['evaluator_user_id']
+            : null,
+        'evaluatorName' => $submission['evaluator_name'] ?? null,
         'nama' => $submission['nama'],
         'posisi' => $submission['posisi'],
         'periode' => $submission['periode'],
@@ -293,12 +354,22 @@ function normalizeSubmission(array $submission): array
 function loadSubmissions(string $role, ?array $currentUser): array
 {
     $pdo = getDb();
-    $sql = 'SELECT * FROM submissions ORDER BY id DESC';
+    $sql = 'SELECT submissions.*, evaluator.name AS evaluator_name
+            FROM submissions
+            LEFT JOIN users evaluator ON evaluator.id = submissions.evaluator_user_id
+            ORDER BY submissions.id DESC';
     $params = [];
 
-    if ($role === 'staff' && $currentUser) {
-        $sql = 'SELECT * FROM submissions WHERE user_id = ? ORDER BY id DESC';
-        $params = [$currentUser['id']];
+    if ($role !== 'admin' && $currentUser) {
+        $sql = 'SELECT DISTINCT submissions.*, evaluator.name AS evaluator_name
+                FROM submissions
+                LEFT JOIN users evaluator ON evaluator.id = submissions.evaluator_user_id
+                LEFT JOIN assessment_assignments assignment
+                  ON assignment.subject_id = submissions.user_id
+                 AND assignment.evaluator_id = ?
+                WHERE submissions.user_id = ? OR assignment.evaluator_id = ?
+                ORDER BY submissions.id DESC';
+        $params = [$currentUser['id'], $currentUser['id'], $currentUser['id']];
     }
 
     $stmt = $pdo->prepare($sql);

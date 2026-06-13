@@ -6,14 +6,14 @@ shared hosting.
 
 ## Kontrol yang diterapkan
 
-- Password hashing untuk PIN staff, admin, dan leader.
+- Password hashing untuk seluruh akun individual.
 - Rate limiting login berbasis identifier IP yang di-hash.
 - Session strict mode, cookie `HttpOnly`, `SameSite=Lax`, dan `Secure` pada
   production.
 - Prefix cookie `__Host-`, idle timeout, absolute timeout, dan rotasi session ID.
 - CSRF token untuk seluruh endpoint terautentikasi.
 - Validasi same-origin, HTTP POST, JSON content type, dan ukuran payload.
-- Role authorization pada aksi admin dan leader.
+- Role authorization untuk admin, manager, supervisor, dan staff.
 - Prepared statements PDO dengan emulated prepares dinonaktifkan.
 - CSP nonce, HSTS, anti-clickjacking, MIME sniffing, dan isolation headers.
 - Validasi URL HTTP/HTTPS serta batas panjang dan jumlah data.
@@ -26,9 +26,8 @@ shared hosting.
 
 ## Risiko tersisa
 
-- Login tetap menggunakan satu faktor berupa PIN/passphrase. MFA belum tersedia.
-- Admin dan leader adalah credential bersama, sehingga atribusi per individu
-  terbatas.
+- Login menggunakan username/email dan password. MFA belum tersedia.
+- Setiap penilaian mencatat akun evaluator untuk atribusi per individu.
 - Rate limiting aplikasi tidak menggantikan WAF terhadap serangan terdistribusi.
 - Keamanan akhir bergantung pada cPanel, Apache, PHP, MySQL, DNS, SSL, backup,
   dan keamanan akun GitHub.
@@ -38,8 +37,7 @@ shared hosting.
 ## Persyaratan production
 
 - Gunakan HTTPS dan `KPI_APP_URL` yang tepat.
-- Gunakan hash PIN privileged, bukan PIN plaintext.
-- Gunakan passphrase/PIN minimal 8 karakter dan berbeda untuk setiap akun.
+- Gunakan password minimal 10 karakter dan berbeda untuk setiap akun.
 - Gunakan password database acak minimal 12 karakter.
 - Set `KPI_APP_DEBUG=0` dan `KPI_ALLOW_SCHEMA_MIGRATIONS=0`.
 - Aktifkan ModSecurity atau WAF, MFA cPanel/GitHub, backup harian, dan monitoring

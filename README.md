@@ -37,7 +37,7 @@ lebih tinggi daripada `.env`. Jangan commit secret produksi.
 Variabel utama:
 
 - `KPI_DB_HOST`, `KPI_DB_NAME`, `KPI_DB_USER`, `KPI_DB_PASS`
-- `KPI_ADMIN_PIN`, `KPI_LEADER_PIN`
+- `KPI_ADMIN_USERNAME`, `KPI_ADMIN_EMAIL`, `KPI_ADMIN_PASSWORD_HASH`
 - `KPI_APP_ENV=production`
 - `KPI_APP_DEBUG=0`
 - `KPI_WORK_DAYS=26`
@@ -97,10 +97,10 @@ di [`SECURITY.md`](SECURITY.md).
 - Session cookie `HttpOnly` dan `SameSite=Lax`
 - CSRF token untuk seluruh endpoint terautentikasi
 - Content Security Policy dan HTTP security headers
-- PIN staff disimpan menggunakan `password_hash`
-- PIN tidak pernah dikirim kembali melalui API
+- Password seluruh akun disimpan menggunakan `password_hash`
+- Password tidak pernah dikirim kembali melalui API
 - Installer database tidak dapat diakses melalui HTTP
 - Detail exception hanya masuk server log kecuali debug diaktifkan
 
-Untuk production, gunakan HTTPS dan ganti seluruh credential/PIN bawaan.
+Untuk production, gunakan HTTPS dan ganti seluruh credential bawaan.
 # kpi

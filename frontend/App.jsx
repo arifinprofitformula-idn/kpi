@@ -7,7 +7,7 @@ import Users from './components/Users.jsx';
 import { api } from './lib/api.js';
 
 const INITIAL_AUTH = window.APP_STATE || {};
-const EMPTY_DATA = { users: [], submissions: [], posisiData: {} };
+const EMPTY_DATA = { users: [], assessableUsers: [], submissions: [], posisiData: {} };
 
 export default function App() {
   const [auth, setAuth] = useState({
@@ -15,7 +15,7 @@ export default function App() {
     currentUser: INITIAL_AUTH.currentUser || null,
   });
   const [data, setData] = useState(EMPTY_DATA);
-  const [tab, setTab] = useState('input');
+  const [tab, setTab] = useState('results');
   const [loading, setLoading] = useState(Boolean(INITIAL_AUTH.role));
   const [loadError, setLoadError] = useState('');
 
@@ -31,6 +31,7 @@ export default function App() {
     setAuth({ role: result.role, currentUser: result.currentUser });
     setData({
       users: result.users || [],
+      assessableUsers: result.assessableUsers || [],
       submissions: result.submissions || [],
       posisiData: result.posisiData || {},
     });
@@ -50,6 +51,7 @@ export default function App() {
       setAuth({ role: result.role, currentUser: result.currentUser });
       setData({
         users: result.users || [],
+        assessableUsers: result.assessableUsers || [],
         submissions: result.submissions || [],
         posisiData: result.posisiData || {},
       });
@@ -61,7 +63,7 @@ export default function App() {
     await api('logout');
     setAuth({ role: null, currentUser: null });
     setData(EMPTY_DATA);
-    setTab('input');
+    setTab('results');
   }
 
   if (!auth.role) {
@@ -80,24 +82,22 @@ export default function App() {
   }
 
   const isAdmin = auth.role === 'admin';
-  const isLeader = auth.role === 'leader' || isAdmin;
-  const roleLabel = isAdmin
-    ? 'Admin'
-    : auth.role === 'leader'
-      ? 'Leader/HR'
-      : `${auth.currentUser?.nama} (${auth.currentUser?.posisi})`;
+  const canEvaluate = ['admin', 'manager', 'supervisor'].includes(auth.role);
+  const roleLabel = `${auth.currentUser?.nama || 'Akun'} - ${auth.role}`;
 
   return <>
     <header><div className="top-bar"><div><h1>Dashboard KPI Sales & Marketing</h1><span className="role-pill">{roleLabel}</span></div><button className="btn secondary small" onClick={logout}>Logout</button></div><p>PT. Emas Perak Indonesia - React KPI Management</p></header>
     <nav className="tabs">
-      <button className={`tab-btn ${tab === 'input' ? 'active' : ''}`} onClick={() => setTab('input')}>Input KPI</button>
-      {isLeader && <button className={`tab-btn ${tab === 'approval' ? 'active' : ''}`} onClick={() => setTab('approval')}>Approval & Rekap</button>}
+      {canEvaluate && <button className={`tab-btn ${tab === 'input' ? 'active' : ''}`} onClick={() => setTab('input')}>Penilaian Tim</button>}
+      <button className={`tab-btn ${tab === 'results' ? 'active' : ''}`} onClick={() => setTab('results')}>Hasil KPI</button>
       {isAdmin && <button className={`tab-btn ${tab === 'users' ? 'active' : ''}`} onClick={() => setTab('users')}>Pengaturan User</button>}
       {isAdmin && <button className={`tab-btn ${tab === 'settings' ? 'active' : ''}`} onClick={() => setTab('settings')}>Pengaturan Form KPI</button>}
     </nav>
     {loadError && <div className="note-box note-error">{loadError}</div>}
-    {tab === 'input' && <InputKpi role={auth.role} currentUser={auth.currentUser} definitions={data.posisiData} onSaved={loadData} />}
-    {tab === 'approval' && isLeader && <Approval submissions={data.submissions} onRefresh={loadData} />}
+    {tab === 'input' && canEvaluate && (data.assessableUsers.length
+      ? <InputKpi assessableUsers={data.assessableUsers} definitions={data.posisiData} onSaved={loadData} />
+      : <div className="card empty-state">Belum ada akun yang ditugaskan untuk Anda nilai.</div>)}
+    {tab === 'results' && <Approval submissions={data.submissions} />}
     {tab === 'users' && isAdmin && <Users users={data.users} definitions={data.posisiData} onRefresh={loadData} />}
     {tab === 'settings' && isAdmin && <KpiSettings key={Object.keys(data.posisiData).join('|')} definitions={data.posisiData} onSaved={(definitions) => setData((current) => ({ ...current, posisiData: definitions }))} />}
   </>;
