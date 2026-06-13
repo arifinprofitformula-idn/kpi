@@ -1262,8 +1262,8 @@ tr:hover {
 
 .login-logo {
     display: block;
-    width: 140px;
-    max-width: 100%;
+    width: 140px !important;
+    max-width: 140px !important;
     height: auto;
     margin: 0 auto 18px;
     object-fit: contain;
@@ -1321,7 +1321,8 @@ tr:hover {
 
 .header-logo-wrap img {
     display: block;
-    width: 100px;
+    width: 100px !important;
+    max-width: 100px !important;
     height: auto;
     object-fit: contain;
 }

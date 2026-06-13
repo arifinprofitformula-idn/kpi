@@ -10,7 +10,7 @@ $currentUser = $_SESSION['current_user'] ?? null;
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Dashboard KPI Sales & Marketing</title>
-<link rel="stylesheet" href="assets/react/app.css" />
+<link rel="stylesheet" href="assets/react/app.css?v=<?= (int) @filemtime(__DIR__ . '/assets/react/app.css') ?>" />
 </head>
 <body>
 <div class="app" id="app"><div class="loading">Memuat aplikasi React...</div></div>
@@ -24,6 +24,6 @@ window.APP_CONFIG = {
   csrfToken: <?= json_encode(csrfToken(), JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>
 };
 </script>
-<script type="module" src="assets/react/app.js"></script>
+<script type="module" src="assets/react/app.js?v=<?= (int) @filemtime(__DIR__ . '/assets/react/app.js') ?>"></script>
 </body>
 </html>

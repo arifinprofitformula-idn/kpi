@@ -89,7 +89,9 @@ export default function App() {
     <header className="app-header">
       <div className="top-bar">
         <div className="header-brand">
-          <div className="header-logo-wrap"><img src="assets/logo-epi-hitam.png" alt="Indonesian Bullion Ecosystem" /></div>
+          <div className="header-logo-wrap">
+            <img src="assets/logo-epi-hitam.png" width="100" alt="Indonesian Bullion Ecosystem" />
+          </div>
           <div><h1>Dashboard KPI Sales & Marketing</h1><span className="role-pill">{roleLabel}</span><p>PT. Emas Perak Indonesia - React KPI Management</p></div>
         </div>
         <button className="btn secondary small" onClick={logout}>Logout</button>
