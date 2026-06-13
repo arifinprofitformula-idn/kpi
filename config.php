@@ -1,0 +1,288 @@
+<?php
+function envValue(string $key, string $default = ''): string
+{
+    $value = getenv($key);
+    return is_string($value) && $value !== '' ? $value : $default;
+}
+
+define('APP_ENV', envValue('KPI_APP_ENV', 'development'));
+define('APP_DEBUG', filter_var(envValue('KPI_APP_DEBUG', '0'), FILTER_VALIDATE_BOOL));
+define('DB_HOST', envValue('KPI_DB_HOST', 'localhost'));
+define('DB_NAME', envValue('KPI_DB_NAME', 'kpi_app'));
+define('DB_USER', envValue('KPI_DB_USER', 'kpi_user'));
+define('DB_PASS', envValue('KPI_DB_PASS', 'secret'));
+define('PIN_ADMIN', envValue('KPI_ADMIN_PIN', '0000'));
+define('PIN_LEADER', envValue('KPI_LEADER_PIN', '9999'));
+define('HARI_KERJA', (int) envValue('KPI_WORK_DAYS', '26'));
+const API_KEYS = [];
+
+const POSISI_DATA = [
+    'Brand Executive Silvergram' => [
+        'kpis' => [
+            ['id' => 'k1', 'nama' => 'Pencapaian Target Revenue Brand', 'bobot' => 40, 'target' => '≥100% dari target tahunan', 'tiers' => [
+                ['label' => 'Capaian ≥ 120%', 'skor' => 2],
+                ['label' => 'Capaian 95% - 104%', 'skor' => 1],
+                ['label' => 'Capaian < 95%', 'skor' => 0],
+            ]],
+            ['id' => 'k2', 'nama' => 'Channel Productivity & Activation', 'bobot' => 20, 'target' => '≥75% SC & EPIS Aktif', 'tiers' => [
+                ['label' => 'Capaian ≥ 80%', 'skor' => 2],
+                ['label' => 'Capaian 70% - 79%', 'skor' => 1],
+                ['label' => 'Capaian < 70%', 'skor' => 0],
+            ]],
+            ['id' => 'k3', 'nama' => 'Conversion & Funnel Impact', 'bobot' => 15, 'target' => '≥90% Leads ditindaklanjuti ≤ H+1 hari', 'tiers' => [
+                ['label' => 'Capaian ≥ 10%', 'skor' => 2],
+                ['label' => 'Capaian 3% - 9%', 'skor' => 1],
+                ['label' => 'Capaian < 3%', 'skor' => 0],
+            ]],
+            ['id' => 'k4', 'nama' => 'Eksekusi Roadmap & Campaign', 'bobot' => 10, 'target' => '≥90% milestone campaign terealisasi sesuai timeline', 'tiers' => [
+                ['label' => 'Capaian ≥ 95%', 'skor' => 2],
+                ['label' => 'Capaian 85% - 94%', 'skor' => 1],
+                ['label' => 'Capaian < 85%', 'skor' => 0],
+            ]],
+            ['id' => 'k5', 'nama' => 'Portofolio & Product Velocity', 'bobot' => 5, 'target' => 'Tidak ada Varian Stagnan > 3 bulan', 'tiers' => [
+                ['label' => 'Capaian 0 stagnan', 'skor' => 2],
+                ['label' => 'Capaian 1 stagnan', 'skor' => 1],
+                ['label' => 'Capaian >2 stagnan', 'skor' => 0],
+            ]],
+            ['id' => 'k6', 'nama' => 'Strategic Improvement', 'bobot' => 5, 'target' => 'Min. 2 improvement berdampak revenue', 'tiers' => [
+                ['label' => 'Capaian ≥3 improvement berdampak', 'skor' => 2],
+                ['label' => 'Capaian 1-2 improvement', 'skor' => 1],
+                ['label' => 'Capaian 0 improvement', 'skor' => 0],
+            ]],
+            ['id' => 'k7', 'nama' => 'Reporting & Governance', 'bobot' => 5, 'target' => '100% Tepat Waktu', 'tiers' => [
+                ['label' => 'Capaian 100% tepat waktu & akurat', 'skor' => 2],
+                ['label' => 'Capaian 70% (1x terlambat ringan)', 'skor' => 1],
+                ['label' => 'Capaian <70% (>1x terlambat/ data mismatch)', 'skor' => 0],
+            ]],
+        ],
+    ],
+    'Brand Executive Meezan Gold' => [
+        'kpis' => [
+            ['id' => 'k1', 'nama' => 'Pencapaian Target Revenue Brand', 'bobot' => 40, 'target' => 'Mencapai Omzet Rp200 M', 'tiers' => [
+                ['label' => 'Capaian ≥ 105%', 'skor' => 2],
+                ['label' => 'Capaian 95% - 104%', 'skor' => 1],
+                ['label' => 'Capaian < 95%', 'skor' => 0],
+            ]],
+            ['id' => 'k2', 'nama' => 'Channel Productivity & Activation (EPIS)', 'bobot' => 15, 'target' => '≥75% EPIS Aktif Bertransaksi Meezan Gold', 'tiers' => [
+                ['label' => 'Capaian ≥ 75%', 'skor' => 2],
+                ['label' => 'Capaian 50% - 74%', 'skor' => 1],
+                ['label' => 'Capaian < 49%', 'skor' => 0],
+            ]],
+            ['id' => 'k3', 'nama' => 'Eksekusi Roadmap & Campaign', 'bobot' => 10, 'target' => '≥90% milestone campaign terealisasi sesuai timeline', 'tiers' => [
+                ['label' => 'Capaian ≥ 90%', 'skor' => 2],
+                ['label' => 'Capaian 50% - 89%', 'skor' => 1],
+                ['label' => 'Capaian < 49%', 'skor' => 0],
+            ]],
+            ['id' => 'k4', 'nama' => 'Brand Trust & Positioning Consistency', 'bobot' => 10, 'target' => '100% Audit konten & campaign bulanan', 'tiers' => [
+                ['label' => 'Capaian ≥ 95%', 'skor' => 2],
+                ['label' => 'Capaian 85% - 94%', 'skor' => 1],
+                ['label' => 'Capaian > 85%', 'skor' => 0],
+            ]],
+            ['id' => 'k5', 'nama' => 'Strategic Partnership & Ecosystem Growth', 'bobot' => 15, 'target' => '≥3 Kolaborasi berdampak revenue', 'tiers' => [
+                ['label' => 'Capaian ≥ 3 Kolaborasi', 'skor' => 2],
+                ['label' => 'Capaian 1-2 Kolaborasi', 'skor' => 1],
+                ['label' => 'Capaian 0 Kolaborasi', 'skor' => 0],
+            ]],
+            ['id' => 'k6', 'nama' => 'Reporting & Governance', 'bobot' => 10, 'target' => '100% Tepat Waktu', 'tiers' => [
+                ['label' => 'Capaian 100% tepat waktu & akurat', 'skor' => 2],
+                ['label' => 'Capaian 70% (1x terlambat ringan)', 'skor' => 1],
+                ['label' => 'Capaian <70% (>1x terlambat/ data mismatch)', 'skor' => 0],
+            ]],
+        ],
+    ],
+    'Marketing Communication Leader' => [
+        'kpis' => [
+            ['id' => 'k1', 'nama' => 'Demand & Lead Growth Impact', 'bobot' => 25, 'target' => 'Pertumbuhan leads per bulan vs baseline OGSM >15%', 'tiers' => [
+                ['label' => 'Capaian ≥ 15% growth', 'skor' => 2],
+                ['label' => 'Capaian 8 - 14%', 'skor' => 1],
+                ['label' => 'Capaian < 8%', 'skor' => 0],
+            ]],
+            ['id' => 'k2', 'nama' => 'Funnel Conversion & Performance Marketing', 'bobot' => 20, 'target' => 'Conversion rate atau CPL improvement >2%', 'tiers' => [
+                ['label' => 'Capaian > 2%', 'skor' => 2],
+                ['label' => 'Capaian 1 - 2%', 'skor' => 1],
+                ['label' => 'Capaian < 1%', 'skor' => 0],
+            ]],
+            ['id' => 'k3', 'nama' => 'Produk Digital Revenue Achievement', 'bobot' => 20, 'target' => 'Realisasi vs target bulanan', 'tiers' => [
+                ['label' => 'Capaian ≥ 105%', 'skor' => 2],
+                ['label' => 'Capaian 70% - 104%', 'skor' => 1],
+                ['label' => 'Capaian < 70%', 'skor' => 0],
+            ]],
+            ['id' => 'k4', 'nama' => 'SLA Support to Brand Executive', 'bobot' => 15, 'target' => '% pekerjaan selesai sesuai SLA', 'tiers' => [
+                ['label' => 'Capaian ≥ 95%', 'skor' => 2],
+                ['label' => 'Capaian 85% - 94%', 'skor' => 1],
+                ['label' => 'Capaian > 85%', 'skor' => 0],
+            ]],
+            ['id' => 'k5', 'nama' => 'Campaign & Roadmap Execution', 'bobot' => 10, 'target' => 'Program terealisasi ÷ direncanakan', 'tiers' => [
+                ['label' => 'Capaian ≥ 95%', 'skor' => 2],
+                ['label' => 'Capaian 85% - 94%', 'skor' => 1],
+                ['label' => 'Capaian > 85%', 'skor' => 0],
+            ]],
+            ['id' => 'k6', 'nama' => 'Team Performance & Discipline', 'bobot' => 5, 'target' => '≥80% anggota tim mencapai KPI individu', 'tiers' => [
+                ['label' => 'Capaian ≥85 Tim Achieve KPI', 'skor' => 2],
+                ['label' => 'Capaian 70% - 84%', 'skor' => 1],
+                ['label' => 'Capaian <70%', 'skor' => 0],
+            ]],
+            ['id' => 'k7', 'nama' => 'Reporting & Budget Control', 'bobot' => 5, 'target' => '1 report/bulan tepat waktu', 'tiers' => [
+                ['label' => 'Capaian 100% tepat waktu & akurat', 'skor' => 2],
+                ['label' => 'Capaian 70% (1x terlambat ringan)', 'skor' => 1],
+                ['label' => 'Capaian <70% (>1x terlambat/ data mismatch)', 'skor' => 0],
+            ]],
+        ],
+    ],
+    'Staff Marcom - CRM & Database' => [
+        'kpis' => [
+            ['id' => 'k1', 'nama' => 'Kualitas & Ketepatan Update Database CRM', 'bobot' => 25, 'target' => 'Mengukur kualitas data CRM', 'tiers' => [
+                ['label' => 'Capaian ≥95% data terupdate', 'skor' => 2],
+                ['label' => 'Capaian 85 – 94%', 'skor' => 1],
+                ['label' => 'Capaian <85%', 'skor' => 0],
+            ]],
+            ['id' => 'k2', 'nama' => 'Aktivasi Channel & Komunitas EPI', 'bobot' => 20, 'target' => 'Target ≥150 story/bulan, ≥100 broadcast/bulan', 'tiers' => [
+                ['label' => 'Capaian ≥100% target', 'skor' => 2],
+                ['label' => 'Capaian 80–99%', 'skor' => 1],
+                ['label' => 'Capaian <80%', 'skor' => 0],
+            ]],
+            ['id' => 'k3', 'nama' => 'Respons Interaksi Audiens', 'bobot' => 15, 'target' => 'Mengukur kecepatan respon DM/comment', 'tiers' => [
+                ['label' => 'First response ≤15 menit', 'skor' => 2],
+                ['label' => 'First response 16–30 menit', 'skor' => 1],
+                ['label' => 'First response > 30 menit', 'skor' => 0],
+            ]],
+            ['id' => 'k4', 'nama' => 'Support Campaign CRM', 'bobot' => 15, 'target' => 'Mengukur support CRM terhadap campaign', 'tiers' => [
+                ['label' => 'Capaian ≥95%', 'skor' => 2],
+                ['label' => 'Capaian 85 – 94%', 'skor' => 1],
+                ['label' => 'Capaian <85%', 'skor' => 0],
+            ]],
+            ['id' => 'k5', 'nama' => 'Administrasi EPIC Hub', 'bobot' => 10, 'target' => 'Mengukur kerapihan admin platform', 'tiers' => [
+                ['label' => 'Capaian ≥95% task selesai', 'skor' => 2],
+                ['label' => 'Capaian 85 – 94%', 'skor' => 1],
+                ['label' => 'Capaian <85%', 'skor' => 0],
+            ]],
+            ['id' => 'k6', 'nama' => 'Insight & Analisis CRM', 'bobot' => 10, 'target' => 'Mengukur kemampuan membaca data pelanggan', 'tiers' => [
+                ['label' => 'Capaian ≥4 insight', 'skor' => 2],
+                ['label' => 'Capaian 2 - 3 insight', 'skor' => 1],
+                ['label' => 'Capaian <2 insight', 'skor' => 0],
+            ]],
+            ['id' => 'k7', 'nama' => 'Pertumbuhan Database', 'bobot' => 5, 'target' => 'Mengukur pertumbuhan database CRM', 'tiers' => [
+                ['label' => 'Capaian ≥ 7%', 'skor' => 2],
+                ['label' => 'Capaian 4 - 6%', 'skor' => 1],
+                ['label' => 'Capaian < 4%', 'skor' => 0],
+            ]],
+        ],
+    ],
+    'Staff Marcom - Design & Web' => [
+        'kpis' => [
+            ['id' => 'k1', 'nama' => 'Ketepatan Waktu Penyelesaian Desain dan Web', 'bobot' => 25, 'target' => '≥95% task selesai sesuai SLA', 'tiers' => [
+                ['label' => 'Capaian ≥95% task selesai sesuai SLA', 'skor' => 2],
+                ['label' => 'Capaian 85%–94%', 'skor' => 1],
+                ['label' => 'Capaian <85%', 'skor' => 0],
+            ]],
+            ['id' => 'k2', 'nama' => 'Produktivitas Output Desain Digital', 'bobot' => 20, 'target' => '≥100% target output bulanan tercapai', 'tiers' => [
+                ['label' => 'Capaian ≥100%', 'skor' => 2],
+                ['label' => 'Capaian 85%–99%', 'skor' => 1],
+                ['label' => 'Capaian <85%', 'skor' => 0],
+            ]],
+            ['id' => 'k3', 'nama' => 'Kualitas dan Konsistensi Visual Brand', 'bobot' => 15, 'target' => '≥90% output lolos tanpa major revisi', 'tiers' => [
+                ['label' => 'Capaian ≥90%', 'skor' => 2],
+                ['label' => 'Capaian 80%–89%', 'skor' => 1],
+                ['label' => 'Capaian <80%', 'skor' => 0],
+            ]],
+            ['id' => 'k4', 'nama' => 'Penyelesaian Landing Page dan Website', 'bobot' => 15, 'target' => '≥95% LP/website selesai, live, dan berfungsi sesuai brief', 'tiers' => [
+                ['label' => 'Capaian ≥95%', 'skor' => 2],
+                ['label' => 'Capaian 85%–94%', 'skor' => 1],
+                ['label' => 'Capaian <85%', 'skor' => 0],
+            ]],
+            ['id' => 'k5', 'nama' => 'Dukungan Visual terhadap Campaign Marketing', 'bobot' => 10, 'target' => '≥95% kebutuhan visual campaign selesai sesuai timeline', 'tiers' => [
+                ['label' => 'Capaian ≥95%', 'skor' => 2],
+                ['label' => 'Capaian 85%–94%', 'skor' => 1],
+                ['label' => 'Capaian <85%', 'skor' => 0],
+            ]],
+            ['id' => 'k6', 'nama' => 'Improvement Desain dan Tampilan Digital', 'bobot' => 10, 'target' => '≥4 improvement visual/UI actionable per bulan', 'tiers' => [
+                ['label' => 'Capaian ≥4 improvement', 'skor' => 2],
+                ['label' => 'Capaian 2–3 improvement', 'skor' => 1],
+                ['label' => 'Capaian <2 improvement', 'skor' => 0],
+            ]],
+            ['id' => 'k7', 'nama' => 'Riset Kompetitor dan Implementasi Insight Visual', 'bobot' => 5, 'target' => '≥3 insight visual kompetitor diimplementasikan per bulan', 'tiers' => [
+                ['label' => 'Capaian ≥3 insight', 'skor' => 2],
+                ['label' => 'Capaian 1–2 insight', 'skor' => 1],
+                ['label' => 'Capaian 0 insight', 'skor' => 0],
+            ]],
+        ],
+    ],
+    'Staff Marcom - Social Media Content' => [
+        'kpis' => [
+            ['id' => 'k1', 'nama' => 'Disiplin Eksekusi dan Publikasi Konten Media Sosial', 'bobot' => 25, 'target' => 'Posting sesuai tanggal & jam Content Calendar Approved', 'tiers' => [
+                ['label' => '≥ 95% on-time', 'skor' => 2],
+                ['label' => '85-94%', 'skor' => 1],
+                ['label' => '<85%', 'skor' => 0],
+            ]],
+            ['id' => 'k2', 'nama' => 'Kinerja Engagement Konten di Media Sosial', 'bobot' => 20, 'target' => 'Kualitas konten yang diproduksi', 'tiers' => [
+                ['label' => '≥5%', 'skor' => 2],
+                ['label' => '3-4.9%', 'skor' => 1],
+                ['label' => '<3%', 'skor' => 0],
+            ]],
+            ['id' => 'k3', 'nama' => 'Dukungan Konten terhadap Campaign Marketing', 'bobot' => 15, 'target' => 'SLA = deadline pada task tracker', 'tiers' => [
+                ['label' => '≥ 95% on-time', 'skor' => 2],
+                ['label' => '85-94%', 'skor' => 1],
+                ['label' => '<85%', 'skor' => 0],
+            ]],
+            ['id' => 'k4', 'nama' => 'Ketepatan Perencanaan dan Kalender Konten', 'bobot' => 15, 'target' => 'H-3 Completed + Approved', 'tiers' => [
+                ['label' => 'H-3 Kalender Selesai', 'skor' => 2],
+                ['label' => 'H-1', 'skor' => 1],
+                ['label' => 'Tidak Selesai', 'skor' => 0],
+            ]],
+            ['id' => 'k5', 'nama' => 'Analisis Insight dan Optimalisasi Performa Media Sosial', 'bobot' => 10, 'target' => 'Kemampuan membaca data performa', 'tiers' => [
+                ['label' => '≥4 insight actionable / bulan', 'skor' => 2],
+                ['label' => '2-3 insight', 'skor' => 1],
+                ['label' => '<1', 'skor' => 0],
+            ]],
+            ['id' => 'k6', 'nama' => 'Dukungan Lintas Tim dan Ketepatan Respons Pekerjaan', 'bobot' => 10, 'target' => 'Support kebutuhan Marcom Team', 'tiers' => [
+                ['label' => '≥ 95% on-time', 'skor' => 2],
+                ['label' => '85-94%', 'skor' => 1],
+                ['label' => '<85%', 'skor' => 0],
+            ]],
+            ['id' => 'k7', 'nama' => 'Pertumbuhan Audiens Media Sosial', 'bobot' => 5, 'target' => 'Pertumbuhan follower (bulan berjalan vs sebelumnya)', 'tiers' => [
+                ['label' => '≥8%', 'skor' => 2],
+                ['label' => '4-7%', 'skor' => 1],
+                ['label' => '<4%', 'skor' => 0],
+            ]],
+        ],
+    ],
+    'Staff Marcom - Photo & Video Production' => [
+        'kpis' => [
+            ['id' => 'k1', 'nama' => 'Ketepatan Waktu Produksi Foto & Video', 'bobot' => 25, 'target' => 'SLA: Foto produk 1 hr, Reel 1 hr, Video campaign 2 hr, Recap event 2 hr, Dok. mentah H+1', 'tiers' => [
+                ['label' => 'Capaian ≥95% task selesai sesuai SLA', 'skor' => 2],
+                ['label' => 'Capaian 85%–94%', 'skor' => 1],
+                ['label' => 'Capaian < 85%', 'skor' => 0],
+            ]],
+            ['id' => 'k2', 'nama' => 'Kualitas Visual dan Kepatuhan terhadap Brief', 'bobot' => 20, 'target' => 'Sesuai brief, brand guideline, tanpa revisi major', 'tiers' => [
+                ['label' => 'Capaian ≥90% tanpa major revisi', 'skor' => 2],
+                ['label' => 'Capaian 80%–89%', 'skor' => 1],
+                ['label' => 'Capaian < 80%', 'skor' => 0],
+            ]],
+            ['id' => 'k3', 'nama' => 'Output Konten Visual untuk Campaign & Media Sosial', 'bobot' => 20, 'target' => '78 video final/bulan, 30 foto final/bulan', 'tiers' => [
+                ['label' => 'Capaian ≥100% dari target output bulanan', 'skor' => 2],
+                ['label' => 'Capaian 85 - 99%', 'skor' => 1],
+                ['label' => 'Capaian < 85%', 'skor' => 0],
+            ]],
+            ['id' => 'k4', 'nama' => 'Dokumentasi Event dan Ketepatan Materi Pasca-Event', 'bobot' => 15, 'target' => 'Highlight/recap max H+2, file mentah max H+1', 'tiers' => [
+                ['label' => 'Capaian ≥95% event terdokumentasi lengkap & on-time', 'skor' => 2],
+                ['label' => 'Capaian 85%–94%', 'skor' => 1],
+                ['label' => 'Capaian <85%', 'skor' => 0],
+            ]],
+            ['id' => 'k5', 'nama' => 'Produktivitas Pengambilan Konten (Take Content)', 'bobot' => 10, 'target' => '78 Take Content Final', 'tiers' => [
+                ['label' => 'Capaian ≥100% target sesi terlaksana', 'skor' => 2],
+                ['label' => 'Capaian 85%–99%', 'skor' => 1],
+                ['label' => 'Capaian < 85%', 'skor' => 0],
+            ]],
+            ['id' => 'k6', 'nama' => 'Riset Referensi Visual Kompetitor dan Insight Produksi', 'bobot' => 5, 'target' => 'Total insight referensi & usulan penerapan ke EPI', 'tiers' => [
+                ['label' => 'Capaian ≥4 insight visual usable/bulan', 'skor' => 2],
+                ['label' => 'Capaian 2-3 insight', 'skor' => 1],
+                ['label' => 'Capaian <2 insight', 'skor' => 0],
+            ]],
+            ['id' => 'k7', 'nama' => 'Manajemen Arsip Aset Foto & Video', 'bobot' => 5, 'target' => 'Aset tersimpan sesuai standar', 'tiers' => [
+                ['label' => 'Capaian ≥95% aset tertata sesuai standar', 'skor' => 2],
+                ['label' => 'Capaian 85%–94%', 'skor' => 1],
+                ['label' => 'Capaian <85%', 'skor' => 0],
+            ]],
+        ],
+    ],
+];
