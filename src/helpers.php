@@ -55,9 +55,24 @@ function securityAudit(string $event, array $context = []): void
     error_log('[KPI Audit] ' . json_encode($entry, JSON_UNESCAPED_SLASHES));
 }
 
+function authLoginAttemptsTableExists(): bool
+{
+    try {
+        $stmt = getDb()->prepare('SHOW TABLES LIKE ?');
+        $stmt->execute(['auth_login_attempts']);
+        return (bool) $stmt->fetchColumn();
+    } catch (Throwable $ex) {
+        return false;
+    }
+}
+
 function loginRateLimitStatus(): array
 {
     ensureAppSchema();
+    if (!authLoginAttemptsTableExists()) {
+        return ['blocked' => false, 'retry_after' => 0];
+    }
+
     $stmt = getDb()->prepare(
         'SELECT attempt_count, window_started, blocked_until
          FROM auth_login_attempts WHERE identifier = ? LIMIT 1'
@@ -77,6 +92,11 @@ function loginRateLimitStatus(): array
 function recordFailedLogin(): void
 {
     ensureAppSchema();
+    if (!authLoginAttemptsTableExists()) {
+        error_log('[KPI Security] auth_login_attempts table missing; skipped failed login tracking');
+        return;
+    }
+
     $pdo = getDb();
     $identifier = loginAttemptIdentifier();
     $now = time();
@@ -123,6 +143,10 @@ function recordFailedLogin(): void
 function clearLoginAttempts(): void
 {
     ensureAppSchema();
+    if (!authLoginAttemptsTableExists()) {
+        return;
+    }
+
     $stmt = getDb()->prepare('DELETE FROM auth_login_attempts WHERE identifier = ?');
     $stmt->execute([loginAttemptIdentifier()]);
 }

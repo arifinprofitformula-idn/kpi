@@ -28,19 +28,6 @@ function ensureAppSchema(?PDO $pdo = null): void
 
     $pdo = $pdo ?? getDb();
     if (!ALLOW_SCHEMA_MIGRATIONS) {
-        $stmt = $pdo->prepare('SHOW TABLES LIKE ?');
-        $stmt->execute(['auth_login_attempts']);
-        if (!$stmt->fetchColumn()) {
-            $pdo->exec(
-                "CREATE TABLE IF NOT EXISTS auth_login_attempts (
-                    identifier CHAR(64) PRIMARY KEY,
-                    attempt_count SMALLINT UNSIGNED NOT NULL DEFAULT 0,
-                    window_started INT UNSIGNED NOT NULL,
-                    blocked_until INT UNSIGNED NOT NULL DEFAULT 0,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
-            );
-        }
         $ready = true;
         return;
     }
