@@ -135,6 +135,7 @@ KPI_APP_ENV="production"
 KPI_APP_DEBUG="0"
 KPI_APP_URL="https://kpi.arvadigital.web.id"
 KPI_DB_HOST="localhost"
+KPI_DB_PORT="3306"
 KPI_DB_NAME="CPANEL_USER_kpi"
 KPI_DB_USER="CPANEL_USER_kpiuser"
 KPI_DB_PASS="GANTI_DENGAN_PASSWORD_DATABASE"
@@ -153,8 +154,8 @@ KPI_MAX_REQUEST_BYTES="1048576"
 Tanda kutip pada nilai hash wajib dipertahankan karena hash mengandung karakter
 `$`.
 
-Jika MySQL hosting memakai hostname khusus, ganti `localhost` sesuai informasi
-provider.
+Jika MySQL hosting memakai hostname atau port khusus, ganti `localhost` dan
+`3306` sesuai informasi provider.
 
 Setelah schema selesai di-import, user database runtime hanya memerlukan:
 

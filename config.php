@@ -50,6 +50,7 @@ define('APP_ENV', envValue('KPI_APP_ENV', 'development'));
 define('APP_DEBUG', envBool('KPI_APP_DEBUG'));
 define('APP_URL', rtrim(envValue('KPI_APP_URL'), '/'));
 define('DB_HOST', envValue('KPI_DB_HOST', 'localhost'));
+define('DB_PORT', envInt('KPI_DB_PORT', 3306, 1, 65535));
 define('DB_NAME', envValue('KPI_DB_NAME', 'kpi_app'));
 define('DB_USER', envValue('KPI_DB_USER', 'kpi_user'));
 define('DB_PASS', envValue('KPI_DB_PASS', 'secret'));

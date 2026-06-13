@@ -27,7 +27,7 @@ export default function App() {
       setLoadError(result.error || 'Data tidak dapat dimuat.');
       return;
     }
-    setLoadError('');
+    setLoadError(result.warning || '');
     setAuth({ role: result.role, currentUser: result.currentUser });
     setData({
       users: result.users || [],
@@ -46,6 +46,7 @@ export default function App() {
         setLoadError(result.error || 'Data tidak dapat dimuat.');
         return;
       }
+      setLoadError(result.warning || '');
       setAuth({ role: result.role, currentUser: result.currentUser });
       setData({
         users: result.users || [],

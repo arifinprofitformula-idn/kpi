@@ -105,17 +105,35 @@ function handleLoadData(): void
 {
     $role = $_SESSION['role'] ?? getAuthorizedApiRole() ?? 'api';
     $currentUser = $_SESSION['current_user'] ?? null;
-    $response = [
-        'success' => true,
-        'role' => $role,
-        'currentUser' => $currentUser,
-        'submissions' => loadSubmissions($role, $currentUser),
-        'users' => [],
-        'posisiData' => getKpiDefinitions(),
-    ];
+    try {
+        $response = [
+            'success' => true,
+            'role' => $role,
+            'currentUser' => $currentUser,
+            'submissions' => loadSubmissions($role, $currentUser),
+            'users' => [],
+            'posisiData' => getKpiDefinitions(),
+        ];
 
-    if (isAdmin()) {
-        $response['users'] = loadUsers();
+        if (isAdmin()) {
+            $response['users'] = loadUsers();
+        }
+    } catch (PDOException $ex) {
+        if (!isAdmin()) {
+            throw $ex;
+        }
+
+        error_log('[KPI Database] Admin dashboard entered degraded mode: ' . $ex->getMessage());
+        $response = [
+            'success' => true,
+            'role' => $role,
+            'currentUser' => $currentUser,
+            'submissions' => [],
+            'users' => [],
+            'posisiData' => enrichKpiDefinitions(POSISI_DATA),
+            'databaseAvailable' => false,
+            'warning' => 'Admin berhasil masuk, tetapi database belum dapat diakses. Periksa konfigurasi database hosting.',
+        ];
     }
 
     jsonResponse($response);
@@ -366,15 +384,6 @@ function handleLogin(array $payload): void
         jsonResponse(['success' => false, 'error' => 'PIN tidak dikenali.']);
     }
 
-    $rateLimit = loginRateLimitStatus();
-    if ($rateLimit['blocked']) {
-        header('Retry-After: ' . $rateLimit['retry_after']);
-        jsonResponse([
-            'success' => false,
-            'error' => 'Terlalu banyak percobaan login. Coba kembali beberapa saat lagi.',
-        ], 429);
-    }
-
     if (verifyAdminPin($pin)) {
         $_SESSION['role'] = 'admin';
         $_SESSION['current_user'] = null;
@@ -382,6 +391,15 @@ function handleLogin(array $payload): void
         $_SESSION['role'] = 'leader';
         $_SESSION['current_user'] = null;
     } else {
+        $rateLimit = loginRateLimitStatus();
+        if ($rateLimit['blocked']) {
+            header('Retry-After: ' . $rateLimit['retry_after']);
+            jsonResponse([
+                'success' => false,
+                'error' => 'Terlalu banyak percobaan login. Coba kembali beberapa saat lagi.',
+            ], 429);
+        }
+
         $user = getUserByPin($pin);
         if (!$user) {
             recordFailedLogin();
@@ -396,7 +414,14 @@ function handleLogin(array $payload): void
         ];
     }
 
-    clearLoginAttempts();
+    try {
+        clearLoginAttempts();
+    } catch (PDOException $ex) {
+        if (($_SESSION['role'] ?? null) === 'staff') {
+            throw $ex;
+        }
+        error_log('[KPI Database] Login attempt cleanup skipped: ' . $ex->getMessage());
+    }
     session_regenerate_id(true);
     $_SESSION['created_at'] = time();
     $_SESSION['last_activity'] = time();
