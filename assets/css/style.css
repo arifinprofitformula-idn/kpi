@@ -1262,9 +1262,10 @@ tr:hover {
 
 .login-logo {
     display: block;
-    width: 100px;
+    width: 140px;
+    max-width: 100%;
     height: auto;
-    margin: 0 auto 22px;
+    margin: 0 auto 18px;
     object-fit: contain;
 }
 
