@@ -28,10 +28,14 @@ function DocumentHeader({ page }) {
       </td>
       <td className="formal-title-cell"><strong>PT. EMAS PERAK INDONESIA</strong><strong>Key Performance Indicator</strong></td>
       <td className="formal-meta-cell">
-        <span>No. Dokumen</span><b>FO.EPI.29</b>
-        <span>Revisi</span><b>00</b>
-        <span>Tgl. Berlaku</span><b>23 February 2026</b>
-        <span>Halaman</span><b>{page} dari 2</b>
+        <table className="formal-meta-table">
+          <tbody>
+            <tr><th>No. Dokumen</th><td>FO.EPI.29</td></tr>
+            <tr><th>Revisi</th><td>00</td></tr>
+            <tr><th>Tgl. Berlaku</th><td>23 February 2026</td></tr>
+            <tr><th>Halaman</th><td>{page} dari 2</td></tr>
+          </tbody>
+        </table>
       </td>
     </tr></tbody>
   </table>;
