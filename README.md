@@ -89,6 +89,9 @@ Node.js.
 Panduan lengkap deployment cPanel dan subdomain tersedia di
 [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
+Kontrol keamanan, persyaratan production, dan risiko residual didokumentasikan
+di [`SECURITY.md`](SECURITY.md).
+
 ## Security
 
 - Session cookie `HttpOnly` dan `SameSite=Lax`

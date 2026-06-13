@@ -53,6 +53,15 @@ try {
             FOREIGN KEY (submission_id) REFERENCES submissions(id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
     );
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS auth_login_attempts (
+            identifier CHAR(64) PRIMARY KEY,
+            attempt_count SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+            window_started INT UNSIGNED NOT NULL,
+            blocked_until INT UNSIGNED NOT NULL DEFAULT 0,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+    );
     ensureAppSchema($pdo);
     fwrite(STDOUT, "Database schema is ready.\n");
 } catch (Throwable $ex) {

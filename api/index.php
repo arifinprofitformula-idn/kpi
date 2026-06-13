@@ -3,6 +3,25 @@ declare(strict_types=1);
 require_once __DIR__ . '/../src/bootstrap.php';
 require_once __DIR__ . '/../src/helpers.php';
 
+if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+    header('Allow: POST');
+    jsonResponse(['success' => false, 'error' => 'Metode HTTP tidak diizinkan.'], 405);
+}
+
+$contentLength = (int) ($_SERVER['CONTENT_LENGTH'] ?? 0);
+if ($contentLength > MAX_REQUEST_BYTES) {
+    jsonResponse(['success' => false, 'error' => 'Payload terlalu besar.'], 413);
+}
+
+$contentType = strtolower(trim(explode(';', (string) ($_SERVER['CONTENT_TYPE'] ?? ''))[0]));
+if ($contentType !== 'application/json') {
+    jsonResponse(['success' => false, 'error' => 'Content-Type harus application/json.'], 415);
+}
+
+if (!verifySameOriginRequest()) {
+    jsonResponse(['success' => false, 'error' => 'Origin request tidak diizinkan.'], 403);
+}
+
 $payload = getPayload();
 try {
     action_handler($payload);
@@ -17,7 +36,10 @@ try {
 
 function action_handler(array $payload): void
 {
-    $action = $payload['action'] ?? '';
+    $action = is_string($payload['action'] ?? null) ? $payload['action'] : '';
+    if (strlen($action) > 64) {
+        jsonResponse(['success' => false, 'error' => 'Aksi API tidak valid.'], 400);
+    }
 
     if ($action === 'health') {
         jsonResponse(['success' => true, 'message' => 'OK']);
@@ -37,7 +59,19 @@ function action_handler(array $payload): void
             jsonResponse(['success' => true, 'data' => ['posisiData' => getKpiDefinitions()]]);
             break;
         case 'logout':
+            securityAudit('logout');
             $_SESSION = [];
+            if (ini_get('session.use_cookies')) {
+                $params = session_get_cookie_params();
+                setcookie(session_name(), '', [
+                    'expires' => time() - 42000,
+                    'path' => $params['path'],
+                    'domain' => $params['domain'],
+                    'secure' => $params['secure'],
+                    'httponly' => $params['httponly'],
+                    'samesite' => $params['samesite'],
+                ]);
+            }
             session_destroy();
             jsonResponse(['success' => true]);
             break;
@@ -96,6 +130,9 @@ function handleSubmit(array $payload): void
     $selectedPeriode = trim($payload['selectedPeriode'] ?? '');
     $draftAnswers = $payload['draftAnswers'] ?? [];
     $draftKehadiran = $payload['draftKehadiran'] ?? ['sakit' => 0, 'izin' => 0, 'alpa' => 0, 'cuti' => 0];
+    if (!is_array($draftAnswers) || !is_array($draftKehadiran)) {
+        jsonResponse(['success' => false, 'error' => 'Format data KPI tidak valid.']);
+    }
 
     if ($userRole === 'staff' && $currentUser) {
         $selectedNama = $currentUser['nama'];
@@ -104,6 +141,9 @@ function handleSubmit(array $payload): void
 
     if ($selectedNama === '' || $selectedPosisi === '' || $selectedPeriode === '') {
         jsonResponse(['success' => false, 'error' => 'Nama, posisi, dan periode harus diisi.']);
+    }
+    if (strlen($selectedNama) > 255 || strlen($selectedPosisi) > 255 || strlen($selectedPeriode) > 64) {
+        jsonResponse(['success' => false, 'error' => 'Data identitas atau periode terlalu panjang.']);
     }
 
     $definitions = getKpiDefinitions();
@@ -131,6 +171,9 @@ function handleSubmit(array $payload): void
         }
 
         $link = trim((string) ($draftAnswers[$kpi['id']]['link'] ?? ''));
+        if (strlen($link) > 2048) {
+            jsonResponse(['success' => false, 'error' => "Link bukti untuk KPI {$kpi['nama']} terlalu panjang."]);
+        }
         if ($link !== '' && (
             filter_var($link, FILTER_VALIDATE_URL) === false
             || !in_array(strtolower((string) parse_url($link, PHP_URL_SCHEME)), ['http', 'https'], true)
@@ -218,6 +261,7 @@ function handleApprove(array $payload): void
     $pdo = getDb();
     $stmt = $pdo->prepare('UPDATE submissions SET status = ?, catatan = ? WHERE id = ?');
     $stmt->execute(['Approved', '', $id]);
+    securityAudit('submission_approved', ['submission_id' => $id]);
     jsonResponse(['success' => true]);
 }
 
@@ -232,10 +276,14 @@ function handleRevisi(array $payload): void
     if ($id <= 0 || $note === '') {
         jsonResponse(['success' => false, 'error' => 'ID submission dan catatan revisi harus diisi.']);
     }
+    if (strlen($note) > 2000) {
+        jsonResponse(['success' => false, 'error' => 'Catatan revisi maksimal 2000 karakter.']);
+    }
 
     $pdo = getDb();
     $stmt = $pdo->prepare('UPDATE submissions SET status = ?, catatan = ? WHERE id = ?');
     $stmt->execute(['Revisi', $note, $id]);
+    securityAudit('submission_revision_requested', ['submission_id' => $id]);
     jsonResponse(['success' => true]);
 }
 
@@ -253,12 +301,18 @@ function handleSaveUser(array $payload): void
     if ($name === '' || $posisi === '' || ($id <= 0 && $pin === '')) {
         jsonResponse(['success' => false, 'error' => 'Nama, posisi, dan PIN user baru harus diisi.']);
     }
+    if (strlen($name) > 255 || strlen($posisi) > 255) {
+        jsonResponse(['success' => false, 'error' => 'Nama atau posisi terlalu panjang.']);
+    }
+    if ($pin !== '' && (strlen($pin) < 8 || strlen($pin) > 64)) {
+        jsonResponse(['success' => false, 'error' => 'PIN harus terdiri dari 8 sampai 64 karakter.']);
+    }
 
     if (!isset(getKpiDefinitions()[$posisi])) {
         jsonResponse(['success' => false, 'error' => 'Posisi tidak tersedia pada pengaturan form KPI.']);
     }
 
-    if ($pin !== '' && ($pin === PIN_ADMIN || $pin === PIN_LEADER)) {
+    if ($pin !== '' && isPrivilegedPin($pin)) {
         jsonResponse(['success' => false, 'error' => 'PIN bertabrakan dengan kode sistem.']);
     }
 
@@ -280,8 +334,10 @@ function handleSaveUser(array $payload): void
     } else {
         $stmt = $pdo->prepare('INSERT INTO users (name, posisi, pin, pin_hash) VALUES (?, ?, NULL, ?)');
         $stmt->execute([$name, $posisi, password_hash($pin, PASSWORD_DEFAULT)]);
+        $id = (int) $pdo->lastInsertId();
     }
 
+    securityAudit('user_saved', ['target_user_id' => $id, 'position' => $posisi]);
     jsonResponse(['success' => true]);
 }
 
@@ -299,25 +355,37 @@ function handleDeleteUser(array $payload): void
     $pdo = getDb();
     $stmt = $pdo->prepare('DELETE FROM users WHERE id = ?');
     $stmt->execute([$id]);
+    securityAudit('user_deleted', ['target_user_id' => $id]);
     jsonResponse(['success' => true]);
 }
 
 function handleLogin(array $payload): void
 {
     $pin = trim((string) ($payload['pin'] ?? ''));
-    if ($pin === '') {
-        jsonResponse(['success' => false, 'error' => 'PIN harus diisi.']);
+    if ($pin === '' || strlen($pin) > 64) {
+        jsonResponse(['success' => false, 'error' => 'PIN tidak dikenali.']);
     }
 
-    if ($pin === PIN_ADMIN) {
+    $rateLimit = loginRateLimitStatus();
+    if ($rateLimit['blocked']) {
+        header('Retry-After: ' . $rateLimit['retry_after']);
+        jsonResponse([
+            'success' => false,
+            'error' => 'Terlalu banyak percobaan login. Coba kembali beberapa saat lagi.',
+        ], 429);
+    }
+
+    if (verifyAdminPin($pin)) {
         $_SESSION['role'] = 'admin';
         $_SESSION['current_user'] = null;
-    } elseif ($pin === PIN_LEADER) {
+    } elseif (verifyLeaderPin($pin)) {
         $_SESSION['role'] = 'leader';
         $_SESSION['current_user'] = null;
     } else {
         $user = getUserByPin($pin);
         if (!$user) {
+            recordFailedLogin();
+            usleep(random_int(100000, 300000));
             jsonResponse(['success' => false, 'error' => 'PIN tidak dikenali.']);
         }
         $_SESSION['role'] = 'staff';
@@ -328,8 +396,13 @@ function handleLogin(array $payload): void
         ];
     }
 
+    clearLoginAttempts();
     session_regenerate_id(true);
+    $_SESSION['created_at'] = time();
+    $_SESSION['last_activity'] = time();
+    $_SESSION['last_rotation'] = time();
     rotateCsrfToken();
+    securityAudit('login_success');
     jsonResponse([
         'success' => true,
         'role' => $_SESSION['role'],
@@ -360,20 +433,25 @@ function handleSaveKpiDefinitions(array $payload): void
 
     backfillSubmissionDefinitionSnapshots(getKpiDefinitions());
     saveKpiDefinitions($definitions);
+    securityAudit('kpi_definitions_saved', ['position_count' => count($definitions)]);
     jsonResponse(['success' => true, 'data' => ['posisiData' => $definitions]]);
 }
 
 function normalizeKpiDefinitions(array $rawDefinitions): array
 {
+    if (count($rawDefinitions) > 100) {
+        jsonResponse(['success' => false, 'error' => 'Jumlah posisi melebihi batas sistem.']);
+    }
+
     $definitions = [];
     foreach ($rawDefinitions as $positionName => $definition) {
         $positionName = trim((string) $positionName);
-        if ($positionName === '' || isset($definitions[$positionName])) {
+        if ($positionName === '' || strlen($positionName) > 255 || isset($definitions[$positionName])) {
             jsonResponse(['success' => false, 'error' => 'Nama posisi wajib diisi dan harus unik.']);
         }
 
         $rawKpis = is_array($definition) ? ($definition['kpis'] ?? null) : null;
-        if (!is_array($rawKpis) || $rawKpis === []) {
+        if (!is_array($rawKpis) || $rawKpis === [] || count($rawKpis) > 100) {
             jsonResponse(['success' => false, 'error' => "Posisi {$positionName} harus memiliki minimal satu KPI."]);
         }
 
@@ -390,8 +468,11 @@ function normalizeKpiDefinitions(array $rawDefinitions): array
                 $id === ''
                 || preg_match('/^[A-Za-z0-9_-]{1,32}$/', $id) !== 1
                 || $name === ''
+                || strlen($name) > 255
                 || $target === ''
+                || strlen($target) > 2000
                 || $unit === ''
+                || strlen($unit) > 64
                 || $weight === false
                 || $weight <= 0
             ) {
@@ -402,7 +483,7 @@ function normalizeKpiDefinitions(array $rawDefinitions): array
             }
 
             $rawTiers = $rawKpi['tiers'] ?? null;
-            if (!is_array($rawTiers) || $rawTiers === []) {
+            if (!is_array($rawTiers) || $rawTiers === [] || count($rawTiers) > 20) {
                 jsonResponse(['success' => false, 'error' => "KPI {$name} harus memiliki minimal satu opsi capaian."]);
             }
 
@@ -419,6 +500,7 @@ function normalizeKpiDefinitions(array $rawDefinitions): array
                     : null;
                 if (
                     $label === ''
+                    || strlen($label) > 255
                     || $score === false
                     || $score < 0
                     || $score > 2

@@ -12,6 +12,8 @@ function getDb(): PDO
     $pdo = new PDO($dsn, DB_USER, DB_PASS, [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_EMULATE_PREPARES => false,
+        PDO::ATTR_STRINGIFY_FETCHES => false,
     ]);
 
     return $pdo;
@@ -25,6 +27,11 @@ function ensureAppSchema(?PDO $pdo = null): void
     }
 
     $pdo = $pdo ?? getDb();
+    if (!ALLOW_SCHEMA_MIGRATIONS) {
+        $ready = true;
+        return;
+    }
+
     $pdo->exec(
         "CREATE TABLE IF NOT EXISTS app_settings (
             setting_key VARCHAR(100) PRIMARY KEY,
@@ -38,6 +45,15 @@ function ensureAppSchema(?PDO $pdo = null): void
             definition_json LONGTEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (submission_id) REFERENCES submissions(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+    );
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS auth_login_attempts (
+            identifier CHAR(64) PRIMARY KEY,
+            attempt_count SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+            window_started INT UNSIGNED NOT NULL,
+            blocked_until INT UNSIGNED NOT NULL DEFAULT 0,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
     );
     $actualValueColumn = $pdo->query("SHOW COLUMNS FROM submission_answers LIKE 'actual_value'")->fetch();

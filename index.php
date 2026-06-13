@@ -16,12 +16,12 @@ $currentUser = $_SESSION['current_user'] ?? null;
 <div class="app" id="app"><div class="loading">Memuat aplikasi React...</div></div>
 <script nonce="<?= htmlspecialchars(cspNonce(), ENT_QUOTES, 'UTF-8') ?>">
 window.APP_STATE = {
-  role: <?= json_encode($role, JSON_UNESCAPED_UNICODE) ?>,
-  currentUser: <?= json_encode($currentUser, JSON_UNESCAPED_UNICODE) ?>,
+  role: <?= json_encode($role, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
+  currentUser: <?= json_encode($currentUser, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
 };
 window.APP_CONFIG = {
   workDays: <?= HARI_KERJA ?>,
-  csrfToken: <?= json_encode(csrfToken(), JSON_UNESCAPED_SLASHES) ?>
+  csrfToken: <?= json_encode(csrfToken(), JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>
 };
 </script>
 <script type="module" src="assets/react/app.js"></script>

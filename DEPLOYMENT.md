@@ -116,29 +116,55 @@ Di **phpMyAdmin**, pilih database tersebut lalu import:
 database/schema.sql
 ```
 
-Import harus selesai tanpa error dan menghasilkan lima tabel.
+Import harus selesai tanpa error dan menghasilkan enam tabel.
 
 ## 6. Buat konfigurasi production
+
+Generate hash PIN admin dan leader di komputer lokal. Gunakan PIN berbeda dengan
+minimal 8 karakter:
+
+```bash
+php -r "echo password_hash('GANTI_PIN_ADMIN', PASSWORD_DEFAULT), PHP_EOL;"
+php -r "echo password_hash('GANTI_PIN_LEADER', PASSWORD_DEFAULT), PHP_EOL;"
+```
 
 Di root aplikasi, buat file `.env` dengan permission `600` atau `640`:
 
 ```ini
 KPI_APP_ENV="production"
 KPI_APP_DEBUG="0"
+KPI_APP_URL="https://kpi.arvadigital.web.id"
 KPI_DB_HOST="localhost"
 KPI_DB_NAME="CPANEL_USER_kpi"
 KPI_DB_USER="CPANEL_USER_kpiuser"
 KPI_DB_PASS="GANTI_DENGAN_PASSWORD_DATABASE"
-KPI_ADMIN_PIN="GANTI_DENGAN_PIN_ADMIN_KUAT"
-KPI_LEADER_PIN="GANTI_DENGAN_PIN_LEADER_KUAT"
+KPI_ADMIN_PIN_HASH="$2y$...HASIL_PASSWORD_HASH_ADMIN..."
+KPI_LEADER_PIN_HASH="$2y$...HASIL_PASSWORD_HASH_LEADER..."
 KPI_WORK_DAYS="26"
+KPI_ALLOW_SCHEMA_MIGRATIONS="0"
+KPI_SESSION_IDLE_TIMEOUT="1800"
+KPI_SESSION_ABSOLUTE_TIMEOUT="28800"
+KPI_LOGIN_MAX_ATTEMPTS="5"
+KPI_LOGIN_WINDOW_SECONDS="900"
+KPI_LOGIN_LOCKOUT_SECONDS="900"
+KPI_MAX_REQUEST_BYTES="1048576"
 ```
 
-Gunakan PIN admin dan leader yang berbeda. Jangan gunakan nilai development
-`0000` atau `9999`.
+Tanda kutip pada nilai hash wajib dipertahankan karena hash mengandung karakter
+`$`.
 
 Jika MySQL hosting memakai hostname khusus, ganti `localhost` sesuai informasi
 provider.
+
+Setelah schema selesai di-import, user database runtime hanya memerlukan:
+
+```text
+SELECT, INSERT, UPDATE, DELETE
+```
+
+Jangan berikan hak `DROP`, `ALTER`, atau `CREATE` pada user runtime. Jalankan
+perubahan schema menggunakan user database terpisah dan import SQL melalui
+phpMyAdmin.
 
 ## 7. Aktifkan SSL
 
@@ -165,6 +191,7 @@ Alamat HTTP harus berpindah ke HTTPS.
 6. Buat satu input KPI percobaan.
 7. Login sebagai leader dan uji approval.
 8. Pastikan tidak ada error pada cPanel **Errors**.
+9. Pastikan log menampilkan event `[KPI Audit]` untuk aktivitas sensitif.
 
 Tes proteksi file berikut. Semuanya harus menghasilkan `403` atau `404`:
 
@@ -172,9 +199,22 @@ Tes proteksi file berikut. Semuanya harus menghasilkan `403` atau `404`:
 https://kpi.arvadigital.web.id/.env
 https://kpi.arvadigital.web.id/init_db.php
 https://kpi.arvadigital.web.id/README.md
+https://kpi.arvadigital.web.id/database/schema.sql
+https://kpi.arvadigital.web.id/src/bootstrap.php
 ```
 
-## 9. Update berikutnya
+## 9. Hardening hosting
+
+- Aktifkan ModSecurity pada domain jika tersedia.
+- Aktifkan Cloudflare WAF/rate limiting jika DNS menggunakan Cloudflare.
+- Lindungi akun cPanel dan GitHub dengan MFA.
+- Batasi akses SSH hanya saat diperlukan.
+- Simpan backup database harian di lokasi berbeda dari hosting.
+- Periksa cPanel **Errors** dan event `[KPI Security]` / `[KPI Audit]`.
+- Jangan memasang phpMyAdmin, adminer, atau file backup di document root.
+- Jangan gunakan repository publik jika definisi KPI dianggap rahasia bisnis.
+
+## 10. Update berikutnya
 
 Di lokal:
 

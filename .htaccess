@@ -1,8 +1,14 @@
 Options -Indexes
 
-<FilesMatch "(^\.|^(README|DEPLOYMENT)\.md$|^package(-lock)?\.json$|^vite\.config\.js$|^eslint\.config\.js$|^init_db\.php$)">
+<FilesMatch "(^\.|^(README|DEPLOYMENT)\.md$|^package(-lock)?\.json$|^vite\.config\.js$|^eslint\.config\.js$|^(init_db|config|db)\.php$)">
     Require all denied
 </FilesMatch>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(?:api|database|frontend|scripts|src|tests)(?:/|$) - [F,L,NC]
+    RewriteRule (^|/)\.git(?:/|$) - [F,L,NC]
+</IfModule>
 
 <IfModule mod_headers.c>
     Header always set X-Content-Type-Options "nosniff"

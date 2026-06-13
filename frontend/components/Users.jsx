@@ -33,6 +33,8 @@ function UserFields({ form, positions, onChange, editing = false, showPin, onTog
           type={showPin ? 'text' : 'password'}
           inputMode="numeric"
           autoComplete="new-password"
+          minLength={editing && form.pin === '' ? undefined : 8}
+          maxLength="64"
           value={form.pin}
           placeholder={editing ? 'Kosongkan jika tidak diubah' : 'Masukkan PIN akses'}
           onChange={(event) => onChange({ ...form, pin: event.target.value })}
@@ -41,7 +43,7 @@ function UserFields({ form, positions, onChange, editing = false, showPin, onTog
           {showPin ? 'Sembunyikan' : 'Lihat'}
         </button>
       </div>
-      <span className="form-helper">{editing ? 'PIN lama tetap berlaku jika dikosongkan.' : 'Gunakan PIN unik untuk setiap user.'}</span>
+      <span className="form-helper">{editing ? 'Kosongkan agar PIN lama tetap berlaku. PIN baru minimal 8 karakter.' : 'Gunakan PIN unik minimal 8 karakter untuk setiap user.'}</span>
     </div>
   </>;
 }

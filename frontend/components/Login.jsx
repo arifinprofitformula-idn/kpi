@@ -20,7 +20,7 @@ export default function Login({ onLogin }) {
     <p className="card-subtitle">PT. Emas Perak Indonesia - Masukkan PIN Anda</p>
     <form onSubmit={submit}>
       <label>PIN Akses</label>
-      <input type="password" value={pin} onChange={(event) => setPin(event.target.value)} autoFocus />
+      <input type="password" value={pin} maxLength="64" autoComplete="current-password" onChange={(event) => setPin(event.target.value)} autoFocus />
       {error && <div className="note-box note-error">{error}</div>}
       <button className="btn full-width" disabled={busy}>{busy ? 'Memeriksa...' : 'Masuk'}</button>
     </form>

@@ -28,16 +28,92 @@ function envValue(string $key, string $default = ''): string
     return is_string($local) && $local !== '' ? $local : $default;
 }
 
+function envBool(string $key, bool $default = false): bool
+{
+    return filter_var(
+        envValue($key, $default ? '1' : '0'),
+        FILTER_VALIDATE_BOOL,
+        FILTER_NULL_ON_FAILURE
+    ) ?? $default;
+}
+
+function envInt(string $key, int $default, int $min, int $max): int
+{
+    $value = filter_var(envValue($key, (string) $default), FILTER_VALIDATE_INT);
+    if ($value === false) {
+        return $default;
+    }
+    return max($min, min($max, $value));
+}
+
 define('APP_ENV', envValue('KPI_APP_ENV', 'development'));
-define('APP_DEBUG', filter_var(envValue('KPI_APP_DEBUG', '0'), FILTER_VALIDATE_BOOL));
+define('APP_DEBUG', envBool('KPI_APP_DEBUG'));
+define('APP_URL', rtrim(envValue('KPI_APP_URL'), '/'));
 define('DB_HOST', envValue('KPI_DB_HOST', 'localhost'));
 define('DB_NAME', envValue('KPI_DB_NAME', 'kpi_app'));
 define('DB_USER', envValue('KPI_DB_USER', 'kpi_user'));
 define('DB_PASS', envValue('KPI_DB_PASS', 'secret'));
 define('PIN_ADMIN', envValue('KPI_ADMIN_PIN', '0000'));
 define('PIN_LEADER', envValue('KPI_LEADER_PIN', '9999'));
-define('HARI_KERJA', (int) envValue('KPI_WORK_DAYS', '26'));
+define('PIN_ADMIN_HASH', envValue('KPI_ADMIN_PIN_HASH'));
+define('PIN_LEADER_HASH', envValue('KPI_LEADER_PIN_HASH'));
+define('HARI_KERJA', envInt('KPI_WORK_DAYS', 26, 1, 31));
+define('ALLOW_SCHEMA_MIGRATIONS', envBool('KPI_ALLOW_SCHEMA_MIGRATIONS', APP_ENV !== 'production'));
+define('SESSION_IDLE_TIMEOUT', envInt('KPI_SESSION_IDLE_TIMEOUT', 1800, 300, 86400));
+define('SESSION_ABSOLUTE_TIMEOUT', envInt('KPI_SESSION_ABSOLUTE_TIMEOUT', 28800, 1800, 604800));
+define('LOGIN_MAX_ATTEMPTS', envInt('KPI_LOGIN_MAX_ATTEMPTS', 5, 3, 20));
+define('LOGIN_WINDOW_SECONDS', envInt('KPI_LOGIN_WINDOW_SECONDS', 900, 60, 86400));
+define('LOGIN_LOCKOUT_SECONDS', envInt('KPI_LOGIN_LOCKOUT_SECONDS', 900, 60, 86400));
+define('MAX_REQUEST_BYTES', envInt('KPI_MAX_REQUEST_BYTES', 1048576, 16384, 5242880));
 const API_KEYS = [];
+
+function assertProductionConfig(): void
+{
+    if (APP_ENV !== 'production') {
+        return;
+    }
+
+    $errors = [];
+    if (APP_DEBUG) {
+        $errors[] = 'KPI_APP_DEBUG harus 0';
+    }
+    if (filter_var(APP_URL, FILTER_VALIDATE_URL) === false || !str_starts_with(APP_URL, 'https://')) {
+        $errors[] = 'KPI_APP_URL harus URL HTTPS yang valid';
+    }
+    if (DB_PASS === '' || in_array(DB_PASS, ['secret', 'change-me'], true) || strlen(DB_PASS) < 12) {
+        $errors[] = 'KPI_DB_PASS harus kuat dan minimal 12 karakter';
+    }
+    if (
+        PIN_ADMIN_HASH === ''
+        || PIN_LEADER_HASH === ''
+        || (password_get_info(PIN_ADMIN_HASH)['algo'] ?? null) === null
+        || (password_get_info(PIN_LEADER_HASH)['algo'] ?? null) === null
+    ) {
+        $errors[] = 'KPI_ADMIN_PIN_HASH dan KPI_LEADER_PIN_HASH wajib berupa password_hash yang valid';
+    }
+    if ($errors !== []) {
+        throw new RuntimeException('Konfigurasi production tidak aman: ' . implode('; ', $errors));
+    }
+}
+
+function verifyAdminPin(string $pin): bool
+{
+    return PIN_ADMIN_HASH !== ''
+        ? password_verify($pin, PIN_ADMIN_HASH)
+        : hash_equals(PIN_ADMIN, $pin);
+}
+
+function verifyLeaderPin(string $pin): bool
+{
+    return PIN_LEADER_HASH !== ''
+        ? password_verify($pin, PIN_LEADER_HASH)
+        : hash_equals(PIN_LEADER, $pin);
+}
+
+function isPrivilegedPin(string $pin): bool
+{
+    return verifyAdminPin($pin) || verifyLeaderPin($pin);
+}
 
 const POSISI_DATA = [
     'Brand Executive Silvergram' => [
