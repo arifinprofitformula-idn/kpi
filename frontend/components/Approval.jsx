@@ -2,10 +2,69 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { achievementLabel } from '../lib/kpi.js';
 
+const KPI_SOURCE_DATA = {
+  'Pencapaian Target Revenue Brand': 'Dashboard Sales / Finance Report',
+  'Channel Productivity & Activation': 'Data EPIS & SC',
+  'Conversion & Funnel Impact': 'CRM Database, Laporan Admin Sales',
+  'Eksekusi Roadmap & Campaign': 'Kalender Campaign Resmi, MOM, Report event & campaign',
+  'Portofolio & Product Velocity': 'Dashboard Sales',
+  'Strategic Improvement': 'Proposal Resmi, Perbandingan Before-After Revenue',
+  'Reporting & Governance': 'Monthly Report by Email',
+};
+
+function sourceDataFor(kpi, answer) {
+  const exact = KPI_SOURCE_DATA[kpi.nama];
+  if (exact) return exact;
+  const matched = Object.entries(KPI_SOURCE_DATA).find(([name]) => kpi.nama.includes(name));
+  if (matched) return matched[1];
+  return answer?.link ? 'Link bukti penilaian' : '-';
+}
+
+function DocumentHeader({ page }) {
+  return <table className="formal-document-header">
+    <tbody><tr>
+      <td className="formal-logo-cell">
+        <img src="assets/logo-epi-hitam.png" alt="Indonesian Bullion Ecosystem" />
+      </td>
+      <td className="formal-title-cell"><strong>PT. EMAS PERAK INDONESIA</strong><strong>Key Performance Indicator</strong></td>
+      <td className="formal-meta-cell">
+        <span>No. Dokumen</span><b>FO.EPI.29</b>
+        <span>Revisi</span><b>00</b>
+        <span>Tgl. Berlaku</span><b>23 February 2026</b>
+        <span>Halaman</span><b>{page} dari 2</b>
+      </td>
+    </tr></tbody>
+  </table>;
+}
+
+function ScoringBlock({ kpi, answer, index }) {
+  const actual = answer?.actualValue ?? 0;
+  const unit = kpi.unit === '%' ? '%' : '';
+  const rowSpan = kpi.tiers.length + 1;
+  return <table className="formal-score-block">
+    <tbody>
+      <tr>
+        <td className="formal-score-number" rowSpan={rowSpan}>{index + 1}</td>
+        <th>{kpi.nama}</th>
+        <td className="formal-selected-score" rowSpan={rowSpan}>{answer?.tier ?? 0}</td>
+        <td className="formal-quality-heading" />
+        <td className="formal-achievement" rowSpan={rowSpan}>{actual}{unit}</td>
+      </tr>
+      {[...kpi.tiers].sort((a, b) => b.skor - a.skor).map((tier) =>
+        <tr key={tier.skor}>
+          <td>{tier.label}</td>
+          <td className={Number(tier.skor) === Number(answer?.tier) ? 'formal-quality-selected' : ''}>{tier.skor}</td>
+        </tr>)}
+    </tbody>
+  </table>;
+}
+
 function KpiPrintReport({ submission, onClose }) {
   const [label] = achievementLabel(submission.scoreCalc.finalAchievement);
   const kpis = submission.definition?.kpis || [];
   const totalWeight = kpis.reduce((total, kpi) => total + Number(kpi.bobot || 0), 0);
+  const firstPageKpis = kpis.slice(0, 6);
+  const secondPageKpis = kpis.slice(6);
 
   useEffect(() => {
     document.body.classList.add('kpi-printing');
@@ -22,94 +81,74 @@ function KpiPrintReport({ submission, onClose }) {
       <button className="btn secondary" type="button" onClick={onClose}>Tutup</button>
       <button className="btn" type="button" onClick={() => window.print()}>Simpan sebagai PDF</button>
     </div>
-    <article className="kpi-print-sheet">
-      <table className="document-header">
-        <tbody><tr>
-          <td className="document-company">
-            <strong>PT. EMAS PERAK INDONESIA</strong>
-            <span>Key Performance Indicator</span>
-          </td>
-          <td className="document-meta">
-            <span>No. Dokumen</span><strong>FO.EPI.29</strong>
-            <span>Revisi</span><strong>00</strong>
-            <span>Tgl. Berlaku</span><strong>{submission.tanggal}</strong>
-            <span>Halaman</span><strong>1</strong>
-          </td>
-        </tr></tbody>
-      </table>
+    <article className="kpi-print-sheet formal-kpi-report">
+      <section className="kpi-print-page">
+        <DocumentHeader page="1" />
+        <div className="formal-department">SALES &amp; MARKETING</div>
+        <div className="formal-employee"><span>Nama Karyawan</span><b>: {submission.nama}</b></div>
 
-      <h1>SALES &amp; MARKETING</h1>
-      <div className="employee-data">
-        <span>Nama Karyawan</span><strong>: {submission.nama}</strong>
-        <span>Jabatan</span><strong>: {submission.posisi}</strong>
-        <span>Periode</span><strong>: {submission.periode}</strong>
-      </div>
-
-      <table className="print-table definition-table">
-        <thead><tr><th>No.</th><th>Key Performance Indicator</th><th>Bobot</th><th>Sumber Data</th><th>Target</th></tr></thead>
-        <tbody>
-          {kpis.map((kpi, index) => {
-            const answer = submission.kpiAnswers.find((item) => item.id === kpi.id);
-            return <tr key={kpi.id}>
-              <td>{index + 1}</td><td>{kpi.nama}</td><td>{kpi.bobot}%</td>
-              <td>{answer?.link ? 'Link bukti terlampir' : '-'}</td><td>{kpi.target}</td>
-            </tr>;
-          })}
-          <tr className="print-total"><td colSpan="2">Total Bobot</td><td>{totalWeight}%</td><td colSpan="2" /></tr>
-        </tbody>
-      </table>
-
-      <table className="print-table scoring-table">
-        <thead><tr><th>No.</th><th>Key Performance Indicator / Kriteria</th><th>Nilai Aktual</th><th>Mutu</th><th>Pencapaian*</th></tr></thead>
-        <tbody>{kpis.map((kpi, index) => {
-          const answer = submission.kpiAnswers.find((item) => item.id === kpi.id);
-          const selectedTier = kpi.tiers.find((tier) => Number(tier.skor) === Number(answer?.tier));
-          const contribution = (Number(answer?.tier || 0) / 2) * Number(kpi.bobot || 0);
-          return <tr key={kpi.id}>
-            <td>{index + 1}</td>
-            <td><strong>{kpi.nama}</strong>{[...kpi.tiers].sort((a, b) => b.skor - a.skor).map((tier) =>
-              <span className={tier === selectedTier ? 'selected-criterion' : ''} key={tier.skor}>{tier.label} (Mutu {tier.skor})</span>)}</td>
-            <td>{answer?.actualValue ?? '-'} {kpi.unit}</td>
-            <td>{answer?.tier ?? 0}</td>
-            <td>{contribution.toFixed(1)}%</td>
-          </tr>;
-        })}</tbody>
-      </table>
-
-      <section className="print-summary">
-        <div>
-          <h2>Catatan Mutu</h2>
-          <span>0 - 69.9%: Perlu Evaluasi</span>
-          <span>70 - 79.9%: Cukup</span>
-          <span>80 - 89.9%: Baik</span>
-          <span>90 - 100%: Sangat Baik</span>
-        </div>
-        <table>
+        <table className="formal-definition-table">
+          <thead><tr><th colSpan="2">{submission.posisi}</th><th>Bobot</th><th>Sumber Data</th><th>Target</th></tr></thead>
           <tbody>
-            <tr><th>Score KPI</th><td>{submission.scoreCalc.scoreKPI}</td></tr>
-            <tr><th>KPI</th><td>{submission.scoreCalc.pctFromKPI}%</td></tr>
-            <tr><th>Kehadiran</th><td>{submission.scoreCalc.kehadiranPct}%</td></tr>
-            <tr><th>Achievement</th><td><strong>{submission.scoreCalc.finalAchievement}%</strong></td></tr>
-            <tr><th>Hasil</th><td><strong>{label}</strong></td></tr>
+            {kpis.map((kpi, index) => {
+              const answer = submission.kpiAnswers.find((item) => item.id === kpi.id);
+              return <tr key={kpi.id}>
+                <td>{index + 1}</td><td>{kpi.nama}</td><td>{kpi.bobot}%</td>
+                <td>{sourceDataFor(kpi, answer)}</td><td>{kpi.target}</td>
+              </tr>;
+            })}
+            <tr className="formal-weight-total"><td colSpan="2" /><td>{totalWeight}%</td><td colSpan="2" /></tr>
           </tbody>
         </table>
-        <div>
-          <h2>Kehadiran</h2>
-          <span>Hari Kerja: {window.APP_CONFIG?.workDays || 26}</span>
-          <span>Sakit: {submission.kehadiran.sakit}</span>
-          <span>Izin: {submission.kehadiran.izin}</span>
-          <span>Alpa: {submission.kehadiran.alpa}</span>
-          <span>Cuti: {submission.kehadiran.cuti}</span>
-        </div>
+
+        <table className="formal-score-header">
+          <tbody><tr><td>A</td><th>Key Performance Indicator</th><th>Score</th><th>Mutu</th><th>Pencapaian*</th></tr></tbody>
+        </table>
+        {firstPageKpis.map((kpi, index) => <ScoringBlock
+          key={kpi.id}
+          kpi={kpi}
+          index={index}
+          answer={submission.kpiAnswers.find((item) => item.id === kpi.id)}
+        />)}
       </section>
 
-      <div className="print-note"><strong>Catatan:</strong> {submission.catatan || '-'}</div>
-      <section className="signature-grid">
-        <div><span>Dibuat Oleh,</span><span>Atasan Langsung</span><strong>{submission.evaluatorName || '(...................................)'}</strong></div>
-        <div><span>Dinilai,</span><span>Karyawan</span><strong>{submission.nama}</strong></div>
-        <div><span>Diketahui Oleh,</span><span>HR / Admin</span><strong>(...................................)</strong></div>
+      <section className="kpi-print-page formal-second-page">
+        {secondPageKpis.map((kpi, offset) => <ScoringBlock
+          key={kpi.id}
+          kpi={kpi}
+          index={offset + 6}
+          answer={submission.kpiAnswers.find((item) => item.id === kpi.id)}
+        />)}
+
+        <table className="formal-score-kpi"><tbody><tr><th>Score KPI</th><td>{submission.scoreCalc.scoreKPI}</td><td /></tr></tbody></table>
+        <table className="formal-attendance">
+          <tbody>
+            <tr><td className="formal-section-letter" rowSpan="5">B</td><th>Kehadiran</th><th>Bobot</th><th>Hari Kerja :</th><td>{window.APP_CONFIG?.workDays || 26}</td></tr>
+            <tr><td>Sakit</td><td>10%</td><td>{submission.kehadiran.sakit}</td><td className="formal-attendance-result" rowSpan="4">{submission.scoreCalc.kehadiranPct}%</td></tr>
+            <tr><td>Izin</td><td>20%</td><td>{submission.kehadiran.izin}</td></tr>
+            <tr><td>Alpa</td><td>70%</td><td>{submission.kehadiran.alpa}</td></tr>
+            <tr><td>Cuti</td><td>0%</td><td>{submission.kehadiran.cuti}</td></tr>
+          </tbody>
+        </table>
+
+        <table className="formal-result">
+          <tbody>
+            <tr><th>Achievement</th><th>Catatan</th></tr>
+            <tr><td>{submission.scoreCalc.finalAchievement}%</td><td>{submission.catatan || label}</td></tr>
+          </tbody>
+        </table>
+
+        <section className="formal-footer">
+          <div className="formal-note">
+            <span>Note:</span><span>0 - 69.9%</span><b>Perlu Evaluasi</b>
+            <span /><span>70 - 79.9%</span><b>Cukup</b>
+            <span /><span>80 - 89.9%</span><b>Baik</b>
+            <span /><span>90 - 100%</span><b>Sangat Baik</b>
+          </div>
+          <div className="formal-signature"><b>Dibuat Oleh,</b><span>Atasan Langsung</span><strong>{submission.evaluatorName || '(...................................)'}</strong></div>
+          <div className="formal-signature"><b>Diketahui Oleh,</b><span>HR</span><strong>(...................................)</strong></div>
+        </section>
       </section>
-      <p className="print-footnote">*Pencapaian dihitung dari mutu terpilih terhadap bobot masing-masing KPI.</p>
     </article>
   </div>, document.body);
 }

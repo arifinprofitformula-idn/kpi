@@ -16,7 +16,8 @@ export default function Login({ onLogin }) {
     onLogin(result);
   }
 
-  return <div className="login-box"><div className="card">
+  return <div className="login-box"><div className="card login-card">
+    <img className="login-logo" src="assets/logo-epi-hitam.png" alt="Indonesian Bullion Ecosystem" />
     <h1 className="card-title">Dashboard KPI Sales & Marketing</h1>
     <p className="card-subtitle">PT. Emas Perak Indonesia - Masuk ke akun Anda</p>
     <form onSubmit={submit}>

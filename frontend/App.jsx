@@ -86,7 +86,15 @@ export default function App() {
   const roleLabel = `${auth.currentUser?.nama || 'Akun'} - ${auth.role}`;
 
   return <>
-    <header><div className="top-bar"><div><h1>Dashboard KPI Sales & Marketing</h1><span className="role-pill">{roleLabel}</span></div><button className="btn secondary small" onClick={logout}>Logout</button></div><p>PT. Emas Perak Indonesia - React KPI Management</p></header>
+    <header className="app-header">
+      <div className="top-bar">
+        <div className="header-brand">
+          <div className="header-logo-wrap"><img src="assets/logo-epi-hitam.png" alt="Indonesian Bullion Ecosystem" /></div>
+          <div><h1>Dashboard KPI Sales & Marketing</h1><span className="role-pill">{roleLabel}</span><p>PT. Emas Perak Indonesia - React KPI Management</p></div>
+        </div>
+        <button className="btn secondary small" onClick={logout}>Logout</button>
+      </div>
+    </header>
     <nav className="tabs">
       {canEvaluate && <button className={`tab-btn ${tab === 'input' ? 'active' : ''}`} onClick={() => setTab('input')}>Penilaian Tim</button>}
       <button className={`tab-btn ${tab === 'results' ? 'active' : ''}`} onClick={() => setTab('results')}>Hasil KPI</button>
