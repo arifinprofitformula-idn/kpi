@@ -23,16 +23,16 @@ scripts/           Quality-check utilities
 
 ## Requirements
 
-- PHP 8.4 dengan `pdo_mysql`
+- PHP 8.2 atau lebih baru dengan `pdo_mysql`
 - MySQL/MariaDB
 - Node.js 22.12 atau lebih baru
 - npm 10 atau lebih baru
 
 ## Configuration
 
-Konfigurasi sensitif dibaca dari environment. Gunakan `.env.example` sebagai
-referensi dan atur variabel tersebut melalui konfigurasi Apache/PHP atau
-environment sistem. Jangan commit secret produksi.
+Konfigurasi sensitif dibaca dari environment sistem atau file `.env` lokal.
+Gunakan `.env.example` sebagai referensi. Environment sistem memiliki prioritas
+lebih tinggi daripada `.env`. Jangan commit secret produksi.
 
 Variabel utama:
 
@@ -82,9 +82,12 @@ npm ci
 npm run check
 ```
 
-Deploy source PHP bersama hasil build `assets/react/`. Folder tersebut
-diabaikan Git karena sebaiknya dibuat oleh pipeline build, tetapi harus tersedia
-pada server runtime.
+Deploy source PHP bersama hasil build `assets/react/`. Hasil build ikut dapat
+disimpan di repository agar deployment shared hosting tidak membutuhkan
+Node.js.
+
+Panduan lengkap deployment cPanel dan subdomain tersedia di
+[`DEPLOYMENT.md`](DEPLOYMENT.md).
 
 ## Security
 

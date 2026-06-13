@@ -694,7 +694,7 @@ tr:hover {
     gap: 10px;
 }
 
-.user-summary > span {
+.user-summary>span {
     min-width: 106px;
     padding: 10px 14px;
     border: 1px solid #e8edf2;
@@ -982,6 +982,7 @@ tr:hover {
 }
 
 @media(max-width:700px) {
+
     .user-form-card,
     .user-list-card {
         padding: 18px;
@@ -999,7 +1000,7 @@ tr:hover {
         grid-template-columns: 1fr 1fr;
     }
 
-    .user-summary > span {
+    .user-summary>span {
         min-width: 0;
     }
 
@@ -1466,7 +1467,7 @@ tr:hover {
     background: #f8fafc;
 }
 
-.summary-stat > span:first-child {
+.summary-stat>span:first-child {
     color: #667085;
     font-size: 11px;
     font-weight: 600;
@@ -1583,7 +1584,7 @@ tr:hover {
     gap: 18px;
 }
 
-.kpi-quick-meta > span:not(.completion-badge) {
+.kpi-quick-meta>span:not(.completion-badge) {
     display: flex;
     flex-direction: column;
     gap: 3px;
@@ -1823,7 +1824,7 @@ tr:hover {
         grid-column: 1 / -1;
     }
 
-    .position-summary-card > .btn {
+    .position-summary-card>.btn {
         align-self: flex-end;
     }
 
@@ -1896,7 +1897,7 @@ tr:hover {
         max-width: none;
     }
 
-    .position-summary-card > .btn {
+    .position-summary-card>.btn {
         align-self: stretch;
         width: 100%;
     }

@@ -1,8 +1,31 @@
 <?php
+declare(strict_types=1);
+
+function localEnvValues(): array
+{
+    static $values = null;
+    if (is_array($values)) {
+        return $values;
+    }
+
+    $path = __DIR__ . '/.env';
+    if (!is_file($path) || !is_readable($path)) {
+        return $values = [];
+    }
+
+    $parsed = parse_ini_file($path, false, INI_SCANNER_RAW);
+    return $values = is_array($parsed) ? $parsed : [];
+}
+
 function envValue(string $key, string $default = ''): string
 {
     $value = getenv($key);
-    return is_string($value) && $value !== '' ? $value : $default;
+    if (is_string($value) && $value !== '') {
+        return $value;
+    }
+
+    $local = localEnvValues()[$key] ?? null;
+    return is_string($local) && $local !== '' ? $local : $default;
 }
 
 define('APP_ENV', envValue('KPI_APP_ENV', 'development'));
