@@ -6,6 +6,7 @@ Options -Indexes
 
 <IfModule mod_rewrite.c>
     RewriteEngine On
+    RewriteRule ^login/?$ login.php [L,QSA,NC]
     RewriteRule ^(?:api|database|frontend|scripts|src|tests)(?:/|$) - [F,L,NC]
     RewriteRule (^|/)\.git(?:/|$) - [F,L,NC]
 </IfModule>
