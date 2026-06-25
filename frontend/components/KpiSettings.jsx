@@ -1,9 +1,16 @@
 import { useState } from 'react';
 import { api } from '../lib/api.js';
-import { OPERATORS, clone, evidenceChecklist, formatRule, newKpi } from '../lib/kpi.js';
+import { OPERATORS, actualDataFields, clone, evidenceChecklist, formatRule, newKpi } from '../lib/kpi.js';
 
 const UNIT_OPTIONS = ['%', 'Rp', 'Unit', 'Gram', 'Hari', 'Aktivitas', 'Dokumen'];
 const CUSTOM_UNIT = '__custom__';
+const ACTUAL_DATA_TYPES = {
+  number: 'Angka',
+  text: 'Teks',
+  date: 'Tanggal',
+  percent: 'Persen',
+  currency: 'Nominal',
+};
 
 function kpiIsComplete(kpi) {
   return Boolean(
@@ -12,6 +19,12 @@ function kpiIsComplete(kpi) {
     && Number(kpi.bobot) > 0
     && kpi.unit?.trim()
     && kpi.target?.trim()
+    && (!kpi.actualDataFields || kpi.actualDataFields.every((field) => (
+      field.id?.trim()
+      && /^[A-Za-z0-9_-]{1,64}$/.test(field.id)
+      && field.label?.trim()
+      && ACTUAL_DATA_TYPES[field.type || 'text']
+    )))
     && (!kpi.evidenceChecklist || kpi.evidenceChecklist.every((item) => String(item || '').trim()))
     && kpi.tiers?.length
     && kpi.tiers.every((tier) => (
@@ -112,6 +125,36 @@ export default function KpiSettings({ definitions, onSaved }) {
       const next = clone(current);
       next[selectedPosition].kpis[kpiIndex].evidenceChecklist ??= [];
       next[selectedPosition].kpis[kpiIndex].evidenceChecklist[itemIndex] = value;
+      return next;
+    });
+  }
+
+  function updateActualDataField(kpiIndex, fieldIndex, key, value) {
+    setDraft((current) => {
+      const next = clone(current);
+      next[selectedPosition].kpis[kpiIndex].actualDataFields ??= [];
+      next[selectedPosition].kpis[kpiIndex].actualDataFields[fieldIndex][key] = value;
+      return next;
+    });
+  }
+
+  function addActualDataField(kpiIndex) {
+    setDraft((current) => {
+      const next = clone(current);
+      const fields = next[selectedPosition].kpis[kpiIndex].actualDataFields ??= [];
+      let sequence = fields.length + 1;
+      let id = `data_${sequence}`;
+      while (fields.some((field) => field.id === id)) id = `data_${++sequence}`;
+      fields.push({ id, label: '', type: 'number', unit: '', required: true });
+      return next;
+    });
+  }
+
+  function removeActualDataField(kpiIndex, fieldIndex) {
+    setDraft((current) => {
+      const next = clone(current);
+      next[selectedPosition].kpis[kpiIndex].actualDataFields = (next[selectedPosition].kpis[kpiIndex].actualDataFields || [])
+        .filter((_, index) => index !== fieldIndex);
       return next;
     });
   }
@@ -289,6 +332,7 @@ export default function KpiSettings({ definitions, onSaved }) {
           const complete = kpiIsComplete(kpi);
           const expanded = expandedKpi === kpiIndex;
           const checklist = kpi.evidenceChecklist || [];
+          const dataFields = kpi.actualDataFields || [];
           return <article className={`kpi-accordion-card ${expanded ? 'expanded' : ''}`} key={`${kpi.id}-${kpiIndex}`}>
             <div className="kpi-accordion-summary">
               <button className="accordion-toggle" onClick={() => setExpandedKpi(expanded ? null : kpiIndex)} aria-expanded={expanded}>
@@ -298,6 +342,7 @@ export default function KpiSettings({ definitions, onSaved }) {
               <div className="kpi-quick-meta">
                 <span><small>Bobot</small><strong>{Number(kpi.bobot || 0)}%</strong></span>
                 <span><small>Satuan</small><strong>{kpi.unit || '-'}</strong></span>
+                <span><small>Data Aktual</small><strong>{actualDataFields(kpi).length} field</strong></span>
                 <span><small>Bukti</small><strong>{evidenceChecklist(kpi).length} item</strong></span>
                 <span className={`completion-badge ${complete ? 'complete' : 'incomplete'}`}>{complete ? 'Lengkap' : 'Belum Lengkap'}</span>
               </div>
@@ -342,6 +387,55 @@ export default function KpiSettings({ definitions, onSaved }) {
                 <label className="form-label">Target</label>
                 <textarea className="form-textarea" rows="3" value={kpi.target} onChange={(event) => updateKpi(kpiIndex, 'target', event.target.value)} />
               </div>
+
+              <section className="actual-data-settings-section">
+                <div className="scoring-section-heading">
+                  <div>
+                    <h4>Input Data Aktual</h4>
+                    <p>Baris pendukung yang diisi oleh penilai sebelum evidence diverifikasi.</p>
+                  </div>
+                  <button className="btn secondary small" type="button" onClick={() => addActualDataField(kpiIndex)}>+ Tambah Field</button>
+                </div>
+                <div className="actual-data-settings-list">
+                  {dataFields.map((field, fieldIndex) => <div className="actual-data-settings-row" key={fieldIndex}>
+                    <input
+                      className="form-control"
+                      value={field.id}
+                      placeholder="id_field"
+                      onChange={(event) => updateActualDataField(kpiIndex, fieldIndex, 'id', event.target.value)}
+                    />
+                    <input
+                      className="form-control"
+                      value={field.label}
+                      placeholder="Contoh: Total leads"
+                      onChange={(event) => updateActualDataField(kpiIndex, fieldIndex, 'label', event.target.value)}
+                    />
+                    <select
+                      className="form-select"
+                      value={field.type || 'text'}
+                      onChange={(event) => updateActualDataField(kpiIndex, fieldIndex, 'type', event.target.value)}
+                    >
+                      {Object.entries(ACTUAL_DATA_TYPES).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
+                    </select>
+                    <input
+                      className="form-control"
+                      value={field.unit || ''}
+                      placeholder="Unit"
+                      onChange={(event) => updateActualDataField(kpiIndex, fieldIndex, 'unit', event.target.value)}
+                    />
+                    <label className="checkbox-row compact-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={field.required !== false}
+                        onChange={(event) => updateActualDataField(kpiIndex, fieldIndex, 'required', event.target.checked)}
+                      />
+                      <span>Wajib</span>
+                    </label>
+                    <button className="btn danger-outline small" type="button" onClick={() => removeActualDataField(kpiIndex, fieldIndex)}>Hapus</button>
+                  </div>)}
+                  {dataFields.length === 0 && <div className="evidence-empty">Belum ada field Input Data Aktual untuk KPI ini.</div>}
+                </div>
+              </section>
 
               <section className="evidence-settings-section">
                 <div className="scoring-section-heading">

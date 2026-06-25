@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '../lib/api.js';
-import { achievementLabel, evidenceChecklist } from '../lib/kpi.js';
+import { achievementLabel, actualDataFields, evidenceChecklist } from '../lib/kpi.js';
 
 const KPI_SOURCE_DATA = {
   'Pencapaian Target Revenue Brand': 'Dashboard Sales / Finance Report',
@@ -21,6 +21,24 @@ function sourceDataFor(kpi, answer) {
   const matched = Object.entries(KPI_SOURCE_DATA).find(([name]) => kpi.nama.includes(name));
   if (matched) return matched[1];
   return answer?.link ? 'Link bukti penilaian' : '-';
+}
+
+function actualDataRows(kpi, answer) {
+  if (Array.isArray(answer?.actualData) && answer.actualData.length > 0) {
+    return answer.actualData;
+  }
+  return actualDataFields(kpi).map((field) => ({
+    id: field.id,
+    label: field.label,
+    type: field.type,
+    unit: field.unit,
+    value: '',
+  }));
+}
+
+function formatActualDataValue(row) {
+  if (row.value === undefined || row.value === null || row.value === '') return '-';
+  return `${row.value}${row.unit ? ` ${row.unit}` : ''}`;
 }
 
 function formatDocumentDate(timestamp, fallback) {
@@ -187,9 +205,15 @@ function KpiPrintReport({ submission, onClose }) {
           <tbody>{kpis.map((kpi) => {
             const answer = submission.kpiAnswers.find((item) => item.id === kpi.id);
             const evidences = answer?.evidences || [];
+            const rows = actualDataRows(kpi, answer);
             return <tr key={kpi.id}>
               <td>{kpi.nama}</td>
-              <td>{answer?.actualValue ?? '-'} {kpi.unit}</td>
+              <td>
+                <div>{answer?.actualValue ?? '-'} {kpi.unit}</div>
+                {rows.length > 0 && <div className="formal-actual-data-list">
+                  {rows.map((row) => <span key={row.id}>{row.label}: {formatActualDataValue(row)}</span>)}
+                </div>}
+              </td>
               <td>{answer?.calculatedTier ?? answer?.tier ?? '-'}</td>
               <td>{answer?.finalTier ?? answer?.tier ?? '-'}</td>
               <td>{evidences.length
@@ -356,9 +380,16 @@ function SubmissionModal({ submission, role, onClose, onExport, onRefresh }) {
         const answer = submission.kpiAnswers.find((item) => item.id === kpi.id);
         const tier = kpi.tiers.find((item) => item.skor === answer?.tier);
         const requiredEvidence = evidenceChecklist(kpi);
+        const rows = actualDataRows(kpi, answer);
         return <div className="kpi-block" key={kpi.id}>
           <div className="kpi-head"><strong>{kpi.nama}</strong><span className="kpi-bobot">{kpi.bobot}%</span></div>
           <div>Nilai aktual: <strong>{answer?.actualValue ?? '-'}</strong> {kpi.unit}</div>
+          {rows.length > 0 && <div className="actual-data-review">
+            <strong>Input Data Aktual:</strong>
+            <dl>
+              {rows.map((row) => <div key={row.id}><dt>{row.label}</dt><dd>{formatActualDataValue(row)}</dd></div>)}
+            </dl>
+          </div>}
           <div>Skor: <strong>{answer?.tier ?? 0}</strong> {tier && `- ${tier.label}`}</div>
           {answer?.link && <a href={answer.link} target="_blank" rel="noreferrer">Buka bukti</a>}
           {requiredEvidence.length > 0 && <div className="evidence-review">

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api } from '../lib/api.js';
-import { MONTHS, calculatedTier, defaultPeriod, evidenceChecklist, formatRule } from '../lib/kpi.js';
+import { MONTHS, actualDataFields, calculatedTier, defaultPeriod, evidenceChecklist, formatRule } from '../lib/kpi.js';
 
 const WORK_DAYS = Number(window.APP_CONFIG?.workDays || 26);
 
@@ -14,13 +14,30 @@ export default function InputKpi({ assessableUsers, definitions, onSaved }) {
   const subject = assessableUsers.find((user) => user.id === Number(subjectId));
   const definition = definitions[subject?.posisi];
 
+  function emptyAnswer() {
+    return { actualValue: '', actualData: {}, link: '', notes: '', achievementNote: '', checklist: [] };
+  }
+
   function updateAnswer(id, field, value) {
-    setAnswers((current) => ({ ...current, [id]: { actualValue: '', link: '', notes: '', achievementNote: '', checklist: [], ...current[id], [field]: value } }));
+    setAnswers((current) => ({ ...current, [id]: { ...emptyAnswer(), ...current[id], [field]: value } }));
+  }
+
+  function updateActualData(id, fieldId, value) {
+    setAnswers((current) => {
+      const answer = { ...emptyAnswer(), ...current[id] };
+      return {
+        ...current,
+        [id]: {
+          ...answer,
+          actualData: { ...(answer.actualData || {}), [fieldId]: value },
+        },
+      };
+    });
   }
 
   function toggleChecklist(id, item, checked) {
     setAnswers((current) => {
-      const answer = { actualValue: '', link: '', notes: '', achievementNote: '', checklist: [], ...current[id] };
+      const answer = { ...emptyAnswer(), ...current[id] };
       const checklist = new Set(answer.checklist || []);
       if (checked) checklist.add(item);
       else checklist.delete(item);
@@ -44,6 +61,15 @@ export default function InputKpi({ assessableUsers, definitions, onSaved }) {
     });
     if (missingKpi) {
       setError(`Nilai aktual untuk KPI ${missingKpi.nama} belum diisi dengan benar.`);
+      return;
+    }
+    const missingActualData = definition.kpis.find((kpi) => actualDataFields(kpi).some((field) => {
+      if (field.required === false) return false;
+      const value = answers[kpi.id]?.actualData?.[field.id];
+      return value === undefined || String(value).trim() === '';
+    }));
+    if (missingActualData) {
+      setError(`Input Data Aktual untuk KPI ${missingActualData.nama} belum lengkap.`);
       return;
     }
     const missingEvidence = definition.kpis.find((kpi) => {
@@ -103,6 +129,7 @@ export default function InputKpi({ assessableUsers, definitions, onSaved }) {
         const answer = answers[kpi.id] || {};
         const tier = calculatedTier(kpi, answer.actualValue);
         const checklist = evidenceChecklist(kpi);
+        const fields = actualDataFields(kpi);
         return <div className="kpi-block" key={kpi.id}>
           <div className="kpi-head"><div className="kpi-title">{kpi.nama}</div><div className="kpi-bobot">Bobot {kpi.bobot}%</div></div>
           <div className="kpi-target">Target: {kpi.target}</div>
@@ -114,6 +141,26 @@ export default function InputKpi({ assessableUsers, definitions, onSaved }) {
           <div className={`formula-result ${tier ? 'matched' : ''}`}>
             {answer.actualValue === undefined || answer.actualValue === '' ? 'Skor dihitung otomatis.' : tier ? <>Hasil formula: <strong>{tier.label}</strong> (skor {tier.skor})</> : 'Nilai belum masuk formula mana pun.'}
           </div>
+          {fields.length > 0 && <div className="actual-data-panel">
+            <div className="actual-data-title">Input Data Aktual</div>
+            <div className="actual-data-grid">
+              {fields.map((field) => {
+                const isNumeric = ['number', 'percent', 'currency'].includes(field.type);
+                return <div className="actual-data-field" key={field.id}>
+                  <label>{field.label}{field.required === false ? '' : ' *'}</label>
+                  <div className="actual-data-control">
+                    <input
+                      type={field.type === 'date' ? 'date' : isNumeric ? 'number' : 'text'}
+                      step={isNumeric ? 'any' : undefined}
+                      value={answer.actualData?.[field.id] ?? ''}
+                      onChange={(event) => updateActualData(kpi.id, field.id, event.target.value)}
+                    />
+                    {field.unit && <span>{field.unit}</span>}
+                  </div>
+                </div>;
+              })}
+            </div>
+          </div>}
           <label>Link Bukti</label>
           <input type="url" value={answer.link || ''} onChange={(event) => updateAnswer(kpi.id, 'link', event.target.value)} />
           {checklist.length > 0 && <div className="evidence-panel">

@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS submission_answers (
     calculated_tier INT NULL,
     final_tier INT NULL,
     actual_value DECIMAL(15,4) NULL,
+    actual_data_json LONGTEXT NULL,
     link TEXT DEFAULT '',
     evidence_notes TEXT NULL,
     evidence_checklist_json LONGTEXT NULL,

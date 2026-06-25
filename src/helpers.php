@@ -312,7 +312,7 @@ function loadSubmissionAnswers(int $submissionId): array
     ensureAppSchema($pdo);
     $stmt = $pdo->prepare(
         'SELECT id AS answerId, kpi_id AS id, tier, calculated_tier AS calculatedTier,
-                final_tier AS finalTier, actual_value AS actualValue, link,
+                final_tier AS finalTier, actual_value AS actualValue, actual_data_json AS actualDataJson, link,
                 evidence_notes AS notes, evidence_checklist_json AS checklistJson,
                 achievement_note AS achievementNote, decision_reason AS decisionReason,
                 coaching_note AS coachingNote, evidence_status AS evidenceStatus
@@ -324,6 +324,11 @@ function loadSubmissionAnswers(int $submissionId): array
         $answer['calculatedTier'] = $answer['calculatedTier'] !== null ? (int) $answer['calculatedTier'] : (int) $answer['tier'];
         $answer['finalTier'] = $answer['finalTier'] !== null ? (int) $answer['finalTier'] : (int) $answer['tier'];
         $answer['actualValue'] = $answer['actualValue'] !== null ? (float) $answer['actualValue'] : null;
+        $actualData = is_string($answer['actualDataJson'] ?? null) && $answer['actualDataJson'] !== ''
+            ? json_decode($answer['actualDataJson'], true)
+            : [];
+        $answer['actualData'] = is_array($actualData) ? $actualData : [];
+        unset($answer['actualDataJson']);
         $checklist = is_string($answer['checklistJson'] ?? null) && $answer['checklistJson'] !== ''
             ? json_decode($answer['checklistJson'], true)
             : [];

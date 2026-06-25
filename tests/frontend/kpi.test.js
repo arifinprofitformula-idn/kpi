@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   achievementLabel,
+  actualDataFields,
   calculatedTier,
   defaultPeriod,
   evidenceChecklist,
@@ -39,4 +40,9 @@ test('format and labels are deterministic', () => {
 test('evidenceChecklist ignores empty legacy values', () => {
   assert.deepEqual(evidenceChecklist({ evidenceChecklist: ['Dashboard', ' ', null] }), ['Dashboard']);
   assert.deepEqual(evidenceChecklist({}), []);
+});
+
+test('actualDataFields ignores legacy empty definitions', () => {
+  assert.deepEqual(actualDataFields({ actualDataFields: [{ id: 'leads', label: 'Total Leads' }, { id: '', label: 'Kosong' }] }), [{ id: 'leads', label: 'Total Leads' }]);
+  assert.deepEqual(actualDataFields({}), []);
 });

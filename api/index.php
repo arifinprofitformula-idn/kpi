@@ -207,6 +207,48 @@ function handleSubmit(array $payload): void
                 'error' => "Nilai aktual {$actualValue} untuk KPI {$kpi['nama']} tidak masuk ke formula skor mana pun. Hubungi Admin.",
             ]);
         }
+        $actualDataFields = is_array($kpi['actualDataFields'] ?? null) ? $kpi['actualDataFields'] : [];
+        $submittedActualData = is_array($draftAnswers[$kpi['id']]['actualData'] ?? null)
+            ? $draftAnswers[$kpi['id']]['actualData']
+            : [];
+        $actualData = [];
+        foreach ($actualDataFields as $field) {
+            $fieldId = trim((string) ($field['id'] ?? ''));
+            if ($fieldId === '') {
+                continue;
+            }
+            $value = $submittedActualData[$fieldId] ?? '';
+            if (is_array($value)) {
+                jsonResponse(['success' => false, 'error' => "Input data aktual {$field['label']} pada KPI {$kpi['nama']} tidak valid."]);
+            }
+            $value = trim((string) $value);
+            $isRequired = !array_key_exists('required', $field) || (bool) $field['required'];
+            if ($isRequired && $value === '') {
+                jsonResponse(['success' => false, 'error' => "Input data aktual {$field['label']} pada KPI {$kpi['nama']} belum diisi."]);
+            }
+            if (strlen($value) > 500) {
+                jsonResponse(['success' => false, 'error' => "Input data aktual {$field['label']} pada KPI {$kpi['nama']} maksimal 500 karakter."]);
+            }
+            $fieldType = (string) ($field['type'] ?? 'text');
+            if (in_array($fieldType, ['number', 'percent', 'currency'], true) && $value !== '') {
+                $numericValue = filter_var($value, FILTER_VALIDATE_FLOAT);
+                if ($numericValue === false || !is_finite((float) $numericValue)) {
+                    jsonResponse(['success' => false, 'error' => "Input data aktual {$field['label']} pada KPI {$kpi['nama']} harus berupa angka."]);
+                }
+                $value = (string) (float) $numericValue;
+            }
+            $actualData[] = [
+                'id' => $fieldId,
+                'label' => (string) ($field['label'] ?? $fieldId),
+                'type' => $fieldType,
+                'unit' => (string) ($field['unit'] ?? ''),
+                'value' => $value,
+            ];
+        }
+        $actualDataJson = json_encode($actualData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if ($actualDataJson === false) {
+            throw new RuntimeException('Input data aktual tidak dapat disimpan.');
+        }
 
         $link = trim((string) ($draftAnswers[$kpi['id']]['link'] ?? ''));
         if (strlen($link) > 2048) {
@@ -253,6 +295,7 @@ function handleSubmit(array $payload): void
             'calculatedTier' => (int) $matchedTier['skor'],
             'finalTier' => (int) $matchedTier['skor'],
             'actualValue' => (float) $actualValue,
+            'actualDataJson' => $actualDataJson,
             'link' => $link,
             'notes' => $notes,
             'achievementNote' => $achievementNote,
@@ -303,9 +346,9 @@ function handleSubmit(array $payload): void
         $submissionId = (int) $pdo->lastInsertId();
         $insertAnswer = $pdo->prepare(
             'INSERT INTO submission_answers
-             (submission_id, kpi_id, tier, calculated_tier, final_tier, actual_value, link,
+             (submission_id, kpi_id, tier, calculated_tier, final_tier, actual_value, actual_data_json, link,
               evidence_notes, evidence_checklist_json, achievement_note, evidence_status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
         );
         $insertEvidence = $pdo->prepare(
             'INSERT INTO submission_answer_evidences
@@ -320,6 +363,7 @@ function handleSubmit(array $payload): void
                 $answer['calculatedTier'],
                 $answer['finalTier'],
                 $answer['actualValue'],
+                $answer['actualDataJson'],
                 $answer['link'],
                 $answer['notes'],
                 $answer['checklistJson'],
@@ -1010,6 +1054,42 @@ function normalizeKpiDefinitions(array $rawDefinitions): array
                     $evidenceChecklist[] = $evidenceItem;
                 }
             }
+            $rawActualDataFields = is_array($rawKpi['actualDataFields'] ?? null) ? $rawKpi['actualDataFields'] : [];
+            if (count($rawActualDataFields) > 20) {
+                jsonResponse(['success' => false, 'error' => "Input data aktual pada KPI {$name} melebihi batas sistem."]);
+            }
+            $actualDataFields = [];
+            $actualFieldIds = [];
+            foreach ($rawActualDataFields as $fieldIndex => $rawField) {
+                if (!is_array($rawField)) {
+                    jsonResponse(['success' => false, 'error' => "Input data aktual ke-" . ($fieldIndex + 1) . " pada KPI {$name} tidak valid."]);
+                }
+                $fieldId = trim((string) ($rawField['id'] ?? ''));
+                $fieldLabel = trim((string) ($rawField['label'] ?? ''));
+                $fieldType = trim((string) ($rawField['type'] ?? 'text'));
+                $fieldUnit = trim((string) ($rawField['unit'] ?? ''));
+                if (
+                    $fieldId === ''
+                    || preg_match('/^[A-Za-z0-9_-]{1,64}$/', $fieldId) !== 1
+                    || $fieldLabel === ''
+                    || strlen($fieldLabel) > 255
+                    || strlen($fieldUnit) > 64
+                    || !in_array($fieldType, ['number', 'text', 'date', 'percent', 'currency'], true)
+                ) {
+                    jsonResponse(['success' => false, 'error' => "Input data aktual ke-" . ($fieldIndex + 1) . " pada KPI {$name} belum lengkap."]);
+                }
+                if (isset($actualFieldIds[$fieldId])) {
+                    jsonResponse(['success' => false, 'error' => "ID input data aktual {$fieldId} pada KPI {$name} harus unik."]);
+                }
+                $actualFieldIds[$fieldId] = true;
+                $actualDataFields[] = [
+                    'id' => $fieldId,
+                    'label' => $fieldLabel,
+                    'type' => $fieldType,
+                    'unit' => $fieldUnit,
+                    'required' => !array_key_exists('required', $rawField) || (bool) $rawField['required'],
+                ];
+            }
 
             $rawTiers = $rawKpi['tiers'] ?? null;
             if (!is_array($rawTiers) || $rawTiers === [] || count($rawTiers) > 20) {
@@ -1065,6 +1145,7 @@ function normalizeKpiDefinitions(array $rawDefinitions): array
                 'bobot' => (float) $weight,
                 'target' => $target,
                 'unit' => $unit,
+                'actualDataFields' => $actualDataFields,
                 'evidenceChecklist' => $evidenceChecklist,
                 'tiers' => $tiers,
             ];

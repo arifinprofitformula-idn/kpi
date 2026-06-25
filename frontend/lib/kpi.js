@@ -61,6 +61,12 @@ export function evidenceChecklist(kpi) {
     : [];
 }
 
+export function actualDataFields(kpi) {
+  return Array.isArray(kpi?.actualDataFields)
+    ? kpi.actualDataFields.filter((field) => field?.id && field?.label)
+    : [];
+}
+
 export function newKpi(id, weight) {
   return {
     id,
@@ -68,6 +74,7 @@ export function newKpi(id, weight) {
     bobot: weight,
     target: 'Target KPI',
     unit: '%',
+    actualDataFields: [],
     evidenceChecklist: ['Link laporan / dokumen pendukung'],
     tiers: [
       { label: 'Target tercapai', skor: 2, rule: { operator: 'gte', value: 100, max: null } },

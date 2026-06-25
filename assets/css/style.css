@@ -452,6 +452,14 @@
     background: #d9ead3;
 }
 
+.formal-actual-data-list {
+    display: grid;
+    gap: .6mm;
+    margin-top: 1mm;
+    color: #333;
+    font-size: 6.5px;
+}
+
 .formal-logo-cell {
     width: 26%;
     padding: 1.3mm 2mm;
@@ -1046,12 +1054,15 @@ select:disabled {
     margin-bottom: 8px;
 }
 
+.actual-data-panel,
 .evidence-panel,
+.actual-data-review,
 .evidence-review,
 .evidence-note {
     margin-top: 10px;
 }
 
+.actual-data-panel,
 .evidence-panel {
     padding: 12px;
     border: 1px solid #d8e4ee;
@@ -1059,11 +1070,66 @@ select:disabled {
     background: #fff;
 }
 
+.actual-data-title,
 .evidence-title {
     margin-bottom: 9px;
     color: #1a3a5c;
     font-size: 12px;
     font-weight: 700;
+}
+
+.actual-data-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 10px;
+}
+
+.actual-data-field label {
+    margin-bottom: 4px;
+    font-size: 12px;
+}
+
+.actual-data-control {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+}
+
+.actual-data-control span {
+    min-width: 28px;
+    color: #667085;
+    font-size: 12px;
+}
+
+.actual-data-review {
+    padding: 10px;
+    border: 1px solid #d8e4ee;
+    border-radius: 8px;
+    background: #fff;
+    font-size: 12px;
+}
+
+.actual-data-review dl {
+    display: grid;
+    gap: 6px;
+    margin: 8px 0 0;
+}
+
+.actual-data-review dl div {
+    display: grid;
+    grid-template-columns: minmax(110px, .7fr) minmax(0, 1fr);
+    gap: 10px;
+}
+
+.actual-data-review dt {
+    color: #667085;
+}
+
+.actual-data-review dd {
+    margin: 0;
+    color: #1d2939;
+    font-weight: 600;
 }
 
 .evidence-check-row {
@@ -2728,6 +2794,7 @@ body.login-active {
     background: #fff;
 }
 
+.actual-data-settings-section,
 .evidence-settings-section {
     overflow: hidden;
     margin: 6px 0 16px;
@@ -2736,6 +2803,7 @@ body.login-active {
     background: #fff;
 }
 
+.actual-data-settings-section .scoring-section-heading,
 .evidence-settings-section .scoring-section-heading {
     display: flex;
     justify-content: space-between;
@@ -2743,10 +2811,18 @@ body.login-active {
     gap: 14px;
 }
 
+.actual-data-settings-list,
 .evidence-settings-list {
     display: grid;
     gap: 10px;
     padding: 16px;
+}
+
+.actual-data-settings-row {
+    display: grid;
+    grid-template-columns: minmax(110px, .6fr) minmax(180px, 1fr) minmax(120px, .7fr) minmax(90px, .45fr) auto auto;
+    gap: 10px;
+    align-items: center;
 }
 
 .evidence-settings-row {
@@ -2754,6 +2830,11 @@ body.login-active {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 10px;
     align-items: center;
+}
+
+.compact-checkbox {
+    margin: 0;
+    white-space: nowrap;
 }
 
 .evidence-empty {

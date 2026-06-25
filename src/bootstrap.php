@@ -114,10 +114,22 @@ function verifySameOriginRequest(): bool
         return true;
     }
 
+    $scheme = isHttpsRequest() ? 'https' : 'http';
+    $host = (string) ($_SERVER['HTTP_HOST'] ?? '');
     $expected = APP_URL;
+    if ($expected !== '' && !preg_match('#^https?://#i', $expected)) {
+        $expected = "{$scheme}://{$expected}";
+    }
+
+    if ($expected !== '') {
+        $parts = parse_url($expected);
+        $expectedScheme = strtolower((string) ($parts['scheme'] ?? $scheme));
+        $expectedHost = strtolower((string) ($parts['host'] ?? ''));
+        $expectedPort = isset($parts['port']) ? ':' . (int) $parts['port'] : '';
+        $expected = $expectedHost !== '' ? "{$expectedScheme}://{$expectedHost}{$expectedPort}" : '';
+    }
+
     if ($expected === '') {
-        $scheme = isHttpsRequest() ? 'https' : 'http';
-        $host = (string) ($_SERVER['HTTP_HOST'] ?? '');
         $expected = $host !== '' ? "{$scheme}://{$host}" : '';
     }
 

@@ -22,21 +22,45 @@ function localEnvValues(): array
         }
 
         $parsed = parse_ini_file($path, false, INI_SCANNER_RAW);
-        return $values = is_array($parsed) ? $parsed : [];
+        if (!is_array($parsed)) {
+            return $values = [];
+        }
+
+        foreach ($parsed as $key => $value) {
+            if (!is_string($value)) {
+                continue;
+            }
+            $trimmed = trim($value);
+            if (
+                strlen($trimmed) >= 2
+                && (
+                    ($trimmed[0] === '"' && $trimmed[-1] === '"')
+                    || ($trimmed[0] === "'" && $trimmed[-1] === "'")
+                )
+            ) {
+                $parsed[$key] = substr($trimmed, 1, -1);
+            }
+        }
+
+        return $values = $parsed;
     }
 
     return $values = [];
 }
 
-function envValue(string $key, string $default = ''): string
+function envValue(string $key, string $default = '', bool $allowEmpty = false): string
 {
     $value = getenv($key);
-    if (is_string($value) && $value !== '') {
+    if (is_string($value) && ($allowEmpty || $value !== '')) {
         return $value;
     }
 
-    $local = localEnvValues()[$key] ?? null;
-    return is_string($local) && $local !== '' ? $local : $default;
+    $localValues = localEnvValues();
+    if (array_key_exists($key, $localValues) && is_string($localValues[$key])) {
+        return ($allowEmpty || $localValues[$key] !== '') ? $localValues[$key] : $default;
+    }
+
+    return $default;
 }
 
 function envBool(string $key, bool $default = false): bool
@@ -64,7 +88,7 @@ define('DB_HOST', envValue('KPI_DB_HOST', 'localhost'));
 define('DB_PORT', envInt('KPI_DB_PORT', 3306, 1, 65535));
 define('DB_NAME', envValue('KPI_DB_NAME', 'kpi_app'));
 define('DB_USER', envValue('KPI_DB_USER', 'kpi_user'));
-define('DB_PASS', envValue('KPI_DB_PASS', 'secret'));
+define('DB_PASS', envValue('KPI_DB_PASS', 'secret', true));
 define('ADMIN_USERNAME', strtolower(envValue('KPI_ADMIN_USERNAME', 'admin')));
 define('ADMIN_EMAIL', strtolower(envValue('KPI_ADMIN_EMAIL', 'admin@kpi.local')));
 define('ADMIN_PASSWORD_HASH', envValue('KPI_ADMIN_PASSWORD_HASH', envValue('KPI_ADMIN_PIN_HASH')));
