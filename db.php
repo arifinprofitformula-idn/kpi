@@ -112,6 +112,96 @@ function ensureAppSchema(?PDO $pdo = null, bool $force = false): void
     if (!$actualValueColumn) {
         $pdo->exec('ALTER TABLE submission_answers ADD actual_value DECIMAL(15,4) NULL AFTER tier');
     }
+    if (!$pdo->query("SHOW COLUMNS FROM submission_answers LIKE 'evidence_notes'")->fetch()) {
+        $pdo->exec('ALTER TABLE submission_answers ADD evidence_notes TEXT NULL AFTER link');
+    }
+    if (!$pdo->query("SHOW COLUMNS FROM submission_answers LIKE 'evidence_checklist_json'")->fetch()) {
+        $pdo->exec('ALTER TABLE submission_answers ADD evidence_checklist_json LONGTEXT NULL AFTER evidence_notes');
+    }
+    $answerColumns = [
+        'calculated_tier' => 'ALTER TABLE submission_answers ADD calculated_tier INT NULL AFTER tier',
+        'final_tier' => 'ALTER TABLE submission_answers ADD final_tier INT NULL AFTER calculated_tier',
+        'achievement_note' => 'ALTER TABLE submission_answers ADD achievement_note TEXT NULL AFTER evidence_checklist_json',
+        'decision_reason' => 'ALTER TABLE submission_answers ADD decision_reason TEXT NULL AFTER achievement_note',
+        'coaching_note' => 'ALTER TABLE submission_answers ADD coaching_note TEXT NULL AFTER decision_reason',
+        'evidence_status' => "ALTER TABLE submission_answers ADD evidence_status VARCHAR(32) NOT NULL DEFAULT 'not_required' AFTER coaching_note",
+    ];
+    foreach ($answerColumns as $column => $sql) {
+        if (!$pdo->query("SHOW COLUMNS FROM submission_answers LIKE " . $pdo->quote($column))->fetch()) {
+            $pdo->exec($sql);
+        }
+    }
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS submission_answer_evidences (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            submission_answer_id INT NOT NULL,
+            requirement_id VARCHAR(64) NOT NULL,
+            requirement_label VARCHAR(255) NOT NULL,
+            expected_format VARCHAR(255) NOT NULL DEFAULT '',
+            evidence_url TEXT NULL,
+            submitted_note TEXT NULL,
+            is_submitted TINYINT(1) NOT NULL DEFAULT 0,
+            is_verified TINYINT(1) NOT NULL DEFAULT 0,
+            verification_status VARCHAR(32) NOT NULL DEFAULT 'pending',
+            verifier_note TEXT NULL,
+            verified_by INT NULL,
+            verified_at TIMESTAMP NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uniq_answer_requirement (submission_answer_id, requirement_id),
+            CONSTRAINT fk_answer_evidence_answer
+                FOREIGN KEY (submission_answer_id) REFERENCES submission_answers(id) ON DELETE CASCADE,
+            CONSTRAINT fk_answer_evidence_verifier
+                FOREIGN KEY (verified_by) REFERENCES users(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+    );
+    $evidenceColumns = [
+        'is_verified' => "ALTER TABLE submission_answer_evidences ADD is_verified TINYINT(1) NOT NULL DEFAULT 0 AFTER is_submitted",
+        'verification_status' => "ALTER TABLE submission_answer_evidences ADD verification_status VARCHAR(32) NOT NULL DEFAULT 'pending' AFTER is_verified",
+        'verifier_note' => "ALTER TABLE submission_answer_evidences ADD verifier_note TEXT NULL AFTER verification_status",
+        'verified_by' => "ALTER TABLE submission_answer_evidences ADD verified_by INT NULL AFTER verifier_note",
+        'verified_at' => "ALTER TABLE submission_answer_evidences ADD verified_at TIMESTAMP NULL AFTER verified_by",
+    ];
+    foreach ($evidenceColumns as $column => $sql) {
+        if (!$pdo->query("SHOW COLUMNS FROM submission_answer_evidences LIKE " . $pdo->quote($column))->fetch()) {
+            $pdo->exec($sql);
+        }
+    }
+    $verifierFk = $pdo->prepare(
+        "SELECT CONSTRAINT_NAME
+         FROM information_schema.KEY_COLUMN_USAGE
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = 'submission_answer_evidences'
+           AND COLUMN_NAME = 'verified_by'
+           AND REFERENCED_TABLE_NAME = 'users'
+         LIMIT 1"
+    );
+    $verifierFk->execute();
+    if (!$verifierFk->fetchColumn()) {
+        $pdo->exec(
+            'ALTER TABLE submission_answer_evidences
+             ADD CONSTRAINT fk_answer_evidence_verifier
+            FOREIGN KEY (verified_by) REFERENCES users(id) ON DELETE SET NULL'
+        );
+    }
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS submission_audit_logs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            submission_id INT NOT NULL,
+            submission_answer_id INT NULL,
+            actor_user_id INT NULL,
+            event VARCHAR(100) NOT NULL,
+            old_value LONGTEXT NULL,
+            new_value LONGTEXT NULL,
+            note TEXT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT fk_submission_audit_submission
+                FOREIGN KEY (submission_id) REFERENCES submissions(id) ON DELETE CASCADE,
+            CONSTRAINT fk_submission_audit_answer
+                FOREIGN KEY (submission_answer_id) REFERENCES submission_answers(id) ON DELETE SET NULL,
+            CONSTRAINT fk_submission_audit_actor
+                FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+    );
 
     $pinHashColumn = $pdo->query("SHOW COLUMNS FROM users LIKE 'pin_hash'")->fetch();
     if (!$pinHashColumn) {
@@ -281,6 +371,15 @@ function enrichKpiDefinitions(array $definitions): array
         $kpis = $definition['kpis'] ?? [];
         foreach ($kpis as $kpiIndex => $kpi) {
             $kpi['unit'] = trim((string) ($kpi['unit'] ?? '%')) ?: '%';
+            $rawEvidenceChecklist = is_array($kpi['evidenceChecklist'] ?? null) ? $kpi['evidenceChecklist'] : [];
+            $evidenceChecklist = [];
+            foreach ($rawEvidenceChecklist as $item) {
+                $item = trim((string) $item);
+                if ($item !== '') {
+                    $evidenceChecklist[] = $item;
+                }
+            }
+            $kpi['evidenceChecklist'] = array_values(array_unique($evidenceChecklist));
             $tiers = $kpi['tiers'] ?? [];
             foreach ($tiers as $tierIndex => $tier) {
                 if (!isset($tier['rule']) || !is_array($tier['rule'])) {
@@ -425,7 +524,7 @@ function calcScore(
     foreach ($def['kpis'] as $kpi) {
         $answer = array_filter($kpiAnswers, fn ($item) => ($item['id'] ?? '') === $kpi['id']);
         $answer = $answer ? array_values($answer)[0] : null;
-        $skor = $answer['tier'] ?? 0;
+        $skor = $answer['finalTier'] ?? $answer['final_tier'] ?? $answer['tier'] ?? 0;
         $totalWeightedScore += ($skor * ($kpi['bobot'] / 100.0));
     }
 

@@ -55,6 +55,12 @@ export function achievementLabel(value) {
   return ['Perlu Evaluasi', 'ach-evaluasi'];
 }
 
+export function evidenceChecklist(kpi) {
+  return Array.isArray(kpi?.evidenceChecklist)
+    ? kpi.evidenceChecklist.filter((item) => String(item || '').trim() !== '')
+    : [];
+}
+
 export function newKpi(id, weight) {
   return {
     id,
@@ -62,6 +68,7 @@ export function newKpi(id, weight) {
     bobot: weight,
     target: 'Target KPI',
     unit: '%',
+    evidenceChecklist: ['Link laporan / dokumen pendukung'],
     tiers: [
       { label: 'Target tercapai', skor: 2, rule: { operator: 'gte', value: 100, max: null } },
       { label: 'Target sebagian', skor: 1, rule: { operator: 'between', value: 80, max: 99.99 } },

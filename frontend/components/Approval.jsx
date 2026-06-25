@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { achievementLabel } from '../lib/kpi.js';
+import { api } from '../lib/api.js';
+import { achievementLabel, evidenceChecklist } from '../lib/kpi.js';
 
 const KPI_SOURCE_DATA = {
   'Pencapaian Target Revenue Brand': 'Dashboard Sales / Finance Report',
@@ -13,6 +14,8 @@ const KPI_SOURCE_DATA = {
 };
 
 function sourceDataFor(kpi, answer) {
+  const checklist = evidenceChecklist(kpi);
+  if (checklist.length > 0) return checklist.join(', ');
   const exact = KPI_SOURCE_DATA[kpi.nama];
   if (exact) return exact;
   const matched = Object.entries(KPI_SOURCE_DATA).find(([name]) => kpi.nama.includes(name));
@@ -36,7 +39,7 @@ function formatDocumentDate(timestamp, fallback) {
   }).format(date);
 }
 
-function DocumentHeader({ page, effectiveDate }) {
+function DocumentHeader({ page, effectiveDate, totalPages = 2 }) {
   return <table className="formal-document-header">
     <tbody><tr>
       <td className="formal-logo-cell">
@@ -49,7 +52,7 @@ function DocumentHeader({ page, effectiveDate }) {
             <tr><th>No. Dokumen</th><td>FO.EPI.29</td></tr>
             <tr><th>Revisi</th><td>00</td></tr>
             <tr><th>Tgl. Berlaku</th><td>{effectiveDate}</td></tr>
-            <tr><th>Halaman</th><td>{page} dari 2</td></tr>
+            <tr><th>Halaman</th><td>{page} dari {totalPages}</td></tr>
           </tbody>
         </table>
       </td>
@@ -66,14 +69,14 @@ function ScoringBlock({ kpi, answer, index }) {
       <tr>
         <td className="formal-score-number" rowSpan={rowSpan}>{index + 1}</td>
         <th>{kpi.nama}</th>
-        <td className="formal-selected-score" rowSpan={rowSpan}>{answer?.tier ?? 0}</td>
+        <td className="formal-selected-score" rowSpan={rowSpan}>{answer?.finalTier ?? answer?.tier ?? 0}</td>
         <td className="formal-quality-heading" />
         <td className="formal-achievement" rowSpan={rowSpan}>{actual}{unit}</td>
       </tr>
       {[...kpi.tiers].sort((a, b) => b.skor - a.skor).map((tier) =>
         <tr key={tier.skor}>
           <td>{tier.label}</td>
-          <td className={Number(tier.skor) === Number(answer?.tier) ? 'formal-quality-selected' : ''}>{tier.skor}</td>
+          <td className={Number(tier.skor) === Number(answer?.finalTier ?? answer?.tier) ? 'formal-quality-selected' : ''}>{tier.skor}</td>
         </tr>)}
     </tbody>
   </table>;
@@ -104,7 +107,7 @@ function KpiPrintReport({ submission, onClose }) {
     </div>
     <article className="kpi-print-sheet formal-kpi-report">
       <section className="kpi-print-page">
-        <DocumentHeader page="1" effectiveDate={effectiveDate} />
+        <DocumentHeader page="1" effectiveDate={effectiveDate} totalPages={3} />
         <div className="formal-department">SALES &amp; MARKETING</div>
         <div className="formal-employee"><span>Nama Karyawan</span><b>: {submission.nama}</b></div>
 
@@ -175,40 +178,243 @@ function KpiPrintReport({ submission, onClose }) {
           <div className="formal-signature"><b>Diketahui Oleh,</b><span>HR</span><strong>(...................................)</strong></div>
         </section>
       </section>
+
+      <section className="kpi-print-page formal-second-page">
+        <DocumentHeader page="3" effectiveDate={effectiveDate} totalPages={3} />
+        <div className="formal-department">EVIDENCE &amp; VERIFICATION SUMMARY</div>
+        <table className="formal-evidence-summary">
+          <thead><tr><th>KPI</th><th>Actual</th><th>Calc</th><th>Final</th><th>Evidence</th><th>Decision</th></tr></thead>
+          <tbody>{kpis.map((kpi) => {
+            const answer = submission.kpiAnswers.find((item) => item.id === kpi.id);
+            const evidences = answer?.evidences || [];
+            return <tr key={kpi.id}>
+              <td>{kpi.nama}</td>
+              <td>{answer?.actualValue ?? '-'} {kpi.unit}</td>
+              <td>{answer?.calculatedTier ?? answer?.tier ?? '-'}</td>
+              <td>{answer?.finalTier ?? answer?.tier ?? '-'}</td>
+              <td>{evidences.length
+                ? evidences.map((evidence) => `${evidence.requirementLabel}: ${evidenceBadgeStatus(evidence)[1]}`).join('; ')
+                : 'Tidak ada evidence checklist pada KPI ini.'}</td>
+              <td>
+                {answer?.decisionReason && <div><strong>Reason:</strong> {answer.decisionReason}</div>}
+                {answer?.coachingNote && <div><strong>Coaching:</strong> {answer.coachingNote}</div>}
+                {!answer?.decisionReason && !answer?.coachingNote && '-'}
+              </td>
+            </tr>;
+          })}</tbody>
+        </table>
+      </section>
     </article>
   </div>, document.body);
 }
 
-function SubmissionModal({ submission, onClose, onExport }) {
+function evidenceBadgeStatus(evidence) {
+  if (!evidence?.isSubmitted || evidence?.verificationStatus === 'missing') return ['missing', 'Missing'];
+  if (evidence.verificationStatus === 'verified') return ['verified', 'Verified'];
+  if (evidence.verificationStatus === 'rejected') return ['rejected', 'Rejected'];
+  return ['pending', 'Pending'];
+}
+
+function statusClass(status) {
+  return String(status || '').toLowerCase().replace(/\s+/g, '-');
+}
+
+function KpiDecisionBlock({ kpi, answer, locked, busy, onSave }) {
+  const calculatedTier = answer?.calculatedTier ?? answer?.tier ?? 0;
+  const initialFinalTier = answer?.finalTier ?? answer?.tier ?? 0;
+  const [finalTier, setFinalTier] = useState(initialFinalTier);
+  const [decisionReason, setDecisionReason] = useState(answer?.decisionReason || '');
+  const [coachingNote, setCoachingNote] = useState(answer?.coachingNote || '');
+  const selectedTier = kpi.tiers.find((item) => Number(item.skor) === Number(finalTier));
+  const reasonRequired = Number(finalTier) !== Number(calculatedTier);
+
+  return <div className="final-decision-panel">
+    <div className="final-score-grid">
+      <span><small>Calculated score</small><strong>{calculatedTier}</strong></span>
+      <span><small>Final score</small><strong>{initialFinalTier}</strong></span>
+      <span><small>Selected tier</small><strong>{selectedTier?.label || '-'}</strong></span>
+    </div>
+    {!locked && <div className="final-decision-form">
+      <label>Final Score</label>
+      <select value={finalTier} onChange={(event) => setFinalTier(Number(event.target.value))}>
+        {[0, 1, 2].map((score) => <option value={score} key={score}>{score}</option>)}
+      </select>
+      <label>Decision Reason {reasonRequired ? '(wajib)' : ''}</label>
+      <textarea rows="3" value={decisionReason} onChange={(event) => setDecisionReason(event.target.value)} />
+      <label>Coaching Note</label>
+      <textarea rows="3" value={coachingNote} onChange={(event) => setCoachingNote(event.target.value)} />
+      <button
+        className="btn secondary small"
+        type="button"
+        disabled={Boolean(busy)}
+        onClick={() => onSave(answer, Number(finalTier), decisionReason, coachingNote)}
+      >
+        Simpan Final Decision
+      </button>
+    </div>}
+    {answer?.decisionReason && <div className="evidence-note"><strong>Decision reason:</strong> {answer.decisionReason}</div>}
+    {answer?.coachingNote && <div className="evidence-note"><strong>Coaching note:</strong> {answer.coachingNote}</div>}
+  </div>;
+}
+
+function SubmissionModal({ submission, role, onClose, onExport, onRefresh }) {
   const [label, cls] = achievementLabel(submission.scoreCalc.finalAchievement);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState('');
+  const isAdmin = role === 'admin';
+  const locked = submission.status === 'Approved';
+
+  async function verifyEvidence(evidence, status) {
+    setError('');
+    if (!evidence.id) {
+      setError('Evidence belum memiliki data review. Minta evaluator submit ulang untuk membuat item evidence.');
+      return;
+    }
+    const note = prompt(status === 'verified' ? 'Catatan verifikasi evidence (opsional):' : 'Catatan koreksi evidence (wajib):', evidence.verifierNote || '');
+    if (note === null) return;
+    if (status === 'rejected' && !note.trim()) {
+      setError('Catatan wajib diisi saat evidence ditolak.');
+      return;
+    }
+
+    setBusy(`${status}-${evidence.id}`);
+    const result = await api('verifyEvidence', { evidenceId: evidence.id, status, note });
+    setBusy('');
+    if (!result.success) {
+      setError(result.error || 'Verifikasi evidence gagal.');
+      return;
+    }
+    await onRefresh();
+  }
+
+  async function saveFinalDecision(answer, finalTier, decisionReason, coachingNote) {
+    setError('');
+    if (!answer?.answerId) {
+      setError('Data submission answer tidak valid.');
+      return;
+    }
+    const calculatedTier = answer.calculatedTier ?? answer.tier ?? 0;
+    if (Number(finalTier) !== Number(calculatedTier) && !decisionReason.trim()) {
+      setError('Decision reason wajib diisi saat final score berbeda dari calculated score.');
+      return;
+    }
+    setBusy(`decision-${answer.answerId}`);
+    const result = await api('updateFinalKpiDecision', {
+      submissionAnswerId: answer.answerId,
+      finalTier,
+      decisionReason,
+      coachingNote,
+    });
+    setBusy('');
+    if (!result.success) {
+      setError(result.error || 'Final decision gagal disimpan.');
+      return;
+    }
+    await onRefresh();
+  }
+
+  async function approveWithEvidence() {
+    setError('');
+    setBusy('approve');
+    const result = await api('approveSubmissionWithEvidence', { id: Number(submission.id) });
+    setBusy('');
+    if (!result.success) {
+      setError(result.error || 'Approval gagal.');
+      return;
+    }
+    await onRefresh();
+    onClose();
+  }
+
+  async function requestEvidenceRevision() {
+    setError('');
+    const note = prompt('Catatan revisi evidence yang harus diperbaiki:');
+    if (note === null) return;
+    if (!note.trim()) {
+      setError('Catatan revisi wajib diisi.');
+      return;
+    }
+    setBusy('revision');
+    const result = await api('requestRevisi', { id: Number(submission.id), note });
+    setBusy('');
+    if (!result.success) {
+      setError(result.error || 'Permintaan revisi gagal.');
+      return;
+    }
+    await onRefresh();
+    onClose();
+  }
+
   return <div className="modal-overlay" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
     <div className="modal"><button className="close-button" onClick={onClose} aria-label="Tutup">x</button>
       <h3>{submission.nama} - {submission.posisi}</h3>
       <p className="card-subtitle">{submission.periode} | {submission.tanggal} | {submission.status}</p>
       <p className="card-subtitle">Dinilai oleh: {submission.evaluatorName || 'Data lama'}</p>
+      {error && <div className="note-box note-error">{error}</div>}
       {submission.catatan && <div className="note-box">{submission.catatan}</div>}
       {(submission.definition?.kpis || []).map((kpi) => {
         const answer = submission.kpiAnswers.find((item) => item.id === kpi.id);
         const tier = kpi.tiers.find((item) => item.skor === answer?.tier);
+        const requiredEvidence = evidenceChecklist(kpi);
         return <div className="kpi-block" key={kpi.id}>
           <div className="kpi-head"><strong>{kpi.nama}</strong><span className="kpi-bobot">{kpi.bobot}%</span></div>
           <div>Nilai aktual: <strong>{answer?.actualValue ?? '-'}</strong> {kpi.unit}</div>
           <div>Skor: <strong>{answer?.tier ?? 0}</strong> {tier && `- ${tier.label}`}</div>
           {answer?.link && <a href={answer.link} target="_blank" rel="noreferrer">Buka bukti</a>}
+          {requiredEvidence.length > 0 && <div className="evidence-review">
+            <strong>Checklist bukti:</strong>
+            <ul>
+              {requiredEvidence.map((item) => <li key={item} className={(answer?.checklist || []).includes(item) ? 'checked' : ''}>{item}</li>)}
+            </ul>
+          </div>}
+          {(answer?.evidences || []).length > 0 && <div className="evidence-review-list">
+            {(answer.evidences || []).map((evidence) => {
+              const [statusClass, statusLabel] = evidenceBadgeStatus(evidence);
+              return <div className="evidence-review-item" key={evidence.id || evidence.requirementId}>
+                <div>
+                  <div className="evidence-review-heading">
+                    <strong>{evidence.requirementLabel}</strong>
+                    <span className={`evidence-status evidence-status-${statusClass}`}>{statusLabel}</span>
+                  </div>
+                  {evidence.evidenceUrl && <a href={evidence.evidenceUrl} target="_blank" rel="noreferrer">Buka evidence</a>}
+                  {evidence.submittedNote && <div className="evidence-note"><strong>Catatan submit:</strong> {evidence.submittedNote}</div>}
+                  {evidence.verifierNote && <div className="evidence-note"><strong>Catatan reviewer:</strong> {evidence.verifierNote}</div>}
+                </div>
+                <div className="evidence-actions">
+                  {!locked && <button className="btn secondary small" type="button" disabled={Boolean(busy) || !evidence.id} onClick={() => verifyEvidence(evidence, 'verified')}>Verify</button>}
+                  {!locked && <button className="btn danger-outline small" type="button" disabled={Boolean(busy) || !evidence.id} onClick={() => verifyEvidence(evidence, 'rejected')}>Reject / Request Correction</button>}
+                </div>
+              </div>;
+            })}
+          </div>}
+          {answer?.notes && <div className="evidence-note"><strong>Catatan bukti:</strong> {answer.notes}</div>}
+          <KpiDecisionBlock
+            key={`${answer?.answerId || kpi.id}-${answer?.finalTier ?? answer?.tier ?? 0}-${answer?.decisionReason || ''}-${answer?.coachingNote || ''}`}
+            kpi={kpi}
+            answer={answer}
+            locked={locked}
+            busy={busy}
+            onSave={saveFinalDecision}
+          />
         </div>;
       })}
       <div className="summary-row"><div className="summary-box"><div className="val">{submission.scoreCalc.scoreKPI}</div><div className="lab">Score KPI</div></div><div className="summary-box"><div className={`val ${cls}`}>{submission.scoreCalc.finalAchievement}%</div><div className="lab">{label}</div></div></div>
-      <div className="actions"><button className="btn" type="button" onClick={onExport}>Export PDF</button></div>
+      <div className="actions">
+        <button className="btn secondary" type="button" onClick={onExport}>Export PDF</button>
+        {isAdmin && !locked && <button className="btn secondary" type="button" disabled={Boolean(busy)} onClick={requestEvidenceRevision}>Minta Revisi Evidence</button>}
+        {isAdmin && !locked && <button className="btn" type="button" disabled={Boolean(busy)} onClick={approveWithEvidence}>{busy === 'approve' ? 'Memproses...' : 'Approve Setelah Evidence Verified'}</button>}
+      </div>
     </div>
   </div>;
 }
 
-export default function Approval({ submissions }) {
+export default function Approval({ submissions, role, onRefresh }) {
   const [filter, setFilter] = useState('Semua');
-  const [selected, setSelected] = useState(null);
+  const [selectedId, setSelectedId] = useState(null);
   const [printSubmission, setPrintSubmission] = useState(null);
   const periods = ['Semua', ...new Set(submissions.map((item) => item.periode))];
   const filtered = filter === 'Semua' ? submissions : submissions.filter((item) => item.periode === filter);
+  const selected = submissions.find((item) => item.id === selectedId) || null;
 
   return <>
     <div className="card filter-row"><label>Filter Periode</label><select value={filter} onChange={(event) => setFilter(event.target.value)}>{periods.map((item) => <option key={item}>{item}</option>)}</select></div>
@@ -216,12 +422,13 @@ export default function Approval({ submissions }) {
       <div className="summary-box"><div className="val">{filtered.length}</div><div className="lab">Total Submission</div></div>
       <div className="summary-box"><div className="val">{filtered.filter((item) => item.status === 'Pending').length}</div><div className="lab">Menunggu Approval</div></div>
       <div className="summary-box"><div className="val">{filtered.filter((item) => item.status === 'Approved').length}</div><div className="lab">Approved</div></div>
+      <div className="summary-box"><div className="val">{filtered.filter((item) => ['Submitted', 'Revisi'].includes(item.status)).length}</div><div className="lab">Butuh Review Evidence</div></div>
     </div>
     <div className="card table-wrap"><table><thead><tr><th>Nama</th><th>Posisi</th><th>Periode</th><th>Status</th><th>Score</th><th>Achievement</th></tr></thead>
-      <tbody>{filtered.map((item) => <tr key={item.id} onClick={() => setSelected(item)}>
-        <td>{item.nama}</td><td>{item.posisi}</td><td>{item.periode}</td><td><span className={`status-badge status-${item.status.toLowerCase()}`}>{item.status}</span></td><td>{item.scoreCalc.scoreKPI}</td><td>{item.scoreCalc.finalAchievement}%</td>
+      <tbody>{filtered.map((item) => <tr key={item.id} onClick={() => setSelectedId(item.id)}>
+        <td>{item.nama}</td><td>{item.posisi}</td><td>{item.periode}</td><td><span className={`status-badge status-${statusClass(item.status)}`}>{item.status}</span></td><td>{item.scoreCalc.scoreKPI}</td><td>{item.scoreCalc.finalAchievement}%</td>
       </tr>)}</tbody></table>{filtered.length === 0 && <div className="empty-state">Belum ada submission.</div>}</div>
-    {selected && <SubmissionModal submission={selected} onClose={() => setSelected(null)} onExport={() => setPrintSubmission(selected)} />}
+    {selected && <SubmissionModal submission={selected} role={role} onClose={() => setSelectedId(null)} onRefresh={onRefresh} onExport={() => setPrintSubmission(selected)} />}
     {printSubmission && <KpiPrintReport submission={printSubmission} onClose={() => setPrintSubmission(null)} />}
   </>;
 }

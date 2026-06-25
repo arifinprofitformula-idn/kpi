@@ -81,6 +81,15 @@ function action_handler(array $payload): void
         case 'submitKpi':
             handleSubmit($payload);
             break;
+        case 'verifyEvidence':
+            handleVerifyEvidence($payload);
+            break;
+        case 'approveSubmissionWithEvidence':
+            handleApproveSubmissionWithEvidence($payload);
+            break;
+        case 'updateFinalKpiDecision':
+            handleUpdateFinalKpiDecision($payload);
+            break;
         case 'approveSubmission':
             handleApprove($payload);
             break;
@@ -209,12 +218,48 @@ function handleSubmit(array $payload): void
         )) {
             jsonResponse(['success' => false, 'error' => "Link bukti untuk KPI {$kpi['nama']} harus berupa URL HTTP/HTTPS."]);
         }
+        $notes = trim((string) ($draftAnswers[$kpi['id']]['notes'] ?? ''));
+        if (strlen($notes) > 2000) {
+            jsonResponse(['success' => false, 'error' => "Catatan bukti untuk KPI {$kpi['nama']} maksimal 2000 karakter."]);
+        }
+        $achievementNote = trim((string) ($draftAnswers[$kpi['id']]['achievementNote'] ?? ''));
+        if (strlen($achievementNote) > 3000) {
+            jsonResponse(['success' => false, 'error' => "Catatan pencapaian untuk KPI {$kpi['nama']} maksimal 3000 karakter."]);
+        }
+        $requiredChecklist = is_array($kpi['evidenceChecklist'] ?? null) ? array_values(array_filter(
+            array_map(fn ($item) => trim((string) $item), $kpi['evidenceChecklist']),
+            fn ($item) => $item !== ''
+        )) : [];
+        $submittedChecklist = is_array($draftAnswers[$kpi['id']]['checklist'] ?? null)
+            ? array_values(array_filter(
+                array_map(fn ($item) => trim((string) $item), $draftAnswers[$kpi['id']]['checklist']),
+                fn ($item) => $item !== ''
+            ))
+            : [];
+        $submittedChecklist = array_values(array_intersect($requiredChecklist, $submittedChecklist));
+        foreach ($requiredChecklist as $requiredItem) {
+            if (!in_array($requiredItem, $submittedChecklist, true)) {
+                jsonResponse(['success' => false, 'error' => "Checklist bukti untuk KPI {$kpi['nama']} belum lengkap."]);
+            }
+        }
+        $checklistJson = json_encode($submittedChecklist, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if ($checklistJson === false) {
+            throw new RuntimeException('Checklist bukti tidak dapat disimpan.');
+        }
 
         $answers[] = [
             'id' => $kpi['id'],
             'tier' => (int) $matchedTier['skor'],
+            'calculatedTier' => (int) $matchedTier['skor'],
+            'finalTier' => (int) $matchedTier['skor'],
             'actualValue' => (float) $actualValue,
             'link' => $link,
+            'notes' => $notes,
+            'achievementNote' => $achievementNote,
+            'evidenceStatus' => $requiredChecklist === [] ? 'not_required' : 'pending',
+            'requiredChecklist' => $requiredChecklist,
+            'submittedChecklist' => $submittedChecklist,
+            'checklistJson' => $checklistJson,
         ];
     }
 
@@ -243,7 +288,7 @@ function handleSubmit(array $payload): void
             $selectedPosisi,
             $selectedPeriode,
             date('d M Y'),
-            'Approved',
+            'Submitted',
             intval($draftKehadiran['sakit'] ?? 0),
             intval($draftKehadiran['izin'] ?? 0),
             intval($draftKehadiran['alpa'] ?? 0),
@@ -256,15 +301,43 @@ function handleSubmit(array $payload): void
         ]);
 
         $submissionId = (int) $pdo->lastInsertId();
-        $insertAnswer = $pdo->prepare('INSERT INTO submission_answers (submission_id, kpi_id, tier, actual_value, link) VALUES (?, ?, ?, ?, ?)');
+        $insertAnswer = $pdo->prepare(
+            'INSERT INTO submission_answers
+             (submission_id, kpi_id, tier, calculated_tier, final_tier, actual_value, link,
+              evidence_notes, evidence_checklist_json, achievement_note, evidence_status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        );
+        $insertEvidence = $pdo->prepare(
+            'INSERT INTO submission_answer_evidences
+             (submission_answer_id, requirement_id, requirement_label, expected_format, evidence_url, submitted_note, is_submitted)
+             VALUES (?, ?, ?, ?, ?, ?, ?)'
+        );
         foreach ($answers as $answer) {
             $insertAnswer->execute([
                 $submissionId,
                 $answer['id'],
                 $answer['tier'],
+                $answer['calculatedTier'],
+                $answer['finalTier'],
                 $answer['actualValue'],
                 $answer['link'],
+                $answer['notes'],
+                $answer['checklistJson'],
+                $answer['achievementNote'],
+                $answer['evidenceStatus'],
             ]);
+            $answerId = (int) $pdo->lastInsertId();
+            foreach ($answer['requiredChecklist'] as $index => $requirementLabel) {
+                $insertEvidence->execute([
+                    $answerId,
+                    $answer['id'] . ':' . ($index + 1),
+                    $requirementLabel,
+                    '',
+                    $answer['link'],
+                    $answer['notes'],
+                    in_array($requirementLabel, $answer['submittedChecklist'], true) ? 1 : 0,
+                ]);
+            }
         }
         saveSubmissionDefinitionSnapshot($submissionId, $definitions[$selectedPosisi]);
         $pdo->commit();
@@ -278,6 +351,155 @@ function handleSubmit(array $payload): void
 
 function handleApprove(array $payload): void
 {
+    handleApproveSubmissionWithEvidence($payload);
+}
+
+function syncAnswerEvidenceStatus(PDO $pdo, int $submissionAnswerId): void
+{
+    $stmt = $pdo->prepare(
+        'SELECT COUNT(*) AS total,
+                SUM(CASE WHEN verification_status = ? THEN 1 ELSE 0 END) AS verified_count,
+                SUM(CASE WHEN verification_status = ? THEN 1 ELSE 0 END) AS rejected_count
+         FROM submission_answer_evidences WHERE submission_answer_id = ?'
+    );
+    $stmt->execute(['verified', 'rejected', $submissionAnswerId]);
+    $status = $stmt->fetch();
+    $total = (int) ($status['total'] ?? 0);
+    $verified = (int) ($status['verified_count'] ?? 0);
+    $rejected = (int) ($status['rejected_count'] ?? 0);
+    $evidenceStatus = 'not_required';
+    if ($total > 0) {
+        $evidenceStatus = $rejected > 0 ? 'rejected' : ($verified === $total ? 'verified' : 'pending');
+    }
+    $update = $pdo->prepare('UPDATE submission_answers SET evidence_status = ? WHERE id = ?');
+    $update->execute([$evidenceStatus, $submissionAnswerId]);
+}
+
+function recalculateSubmissionScores(PDO $pdo, int $submissionId): void
+{
+    $submissionStmt = $pdo->prepare(
+        'SELECT posisi, kehadiran_sakit, kehadiran_izin, kehadiran_alpa, kehadiran_cuti
+         FROM submissions WHERE id = ? LIMIT 1'
+    );
+    $submissionStmt->execute([$submissionId]);
+    $submission = $submissionStmt->fetch();
+    if (!$submission) {
+        throw new RuntimeException('Submission tidak ditemukan untuk kalkulasi ulang.');
+    }
+    $definition = loadSubmissionDefinitionSnapshot($submissionId);
+    if (!$definition) {
+        $definitions = getKpiDefinitions();
+        $definition = $definitions[$submission['posisi']] ?? ['kpis' => []];
+    }
+    $answerStmt = $pdo->prepare(
+        'SELECT kpi_id AS id, tier, final_tier AS finalTier
+         FROM submission_answers WHERE submission_id = ?'
+    );
+    $answerStmt->execute([$submissionId]);
+    $answers = $answerStmt->fetchAll();
+    $scoreCalc = calcScore($submission['posisi'], $answers, [
+        'sakit' => (int) $submission['kehadiran_sakit'],
+        'izin' => (int) $submission['kehadiran_izin'],
+        'alpa' => (int) $submission['kehadiran_alpa'],
+        'cuti' => (int) $submission['kehadiran_cuti'],
+    ], [$submission['posisi'] => $definition]);
+    $update = $pdo->prepare(
+        'UPDATE submissions
+         SET score_kpi = ?, pct_kpi = ?, pct_kehadiran = ?, final_achievement = ?
+         WHERE id = ?'
+    );
+    $update->execute([
+        $scoreCalc['scoreKPI'],
+        $scoreCalc['pctFromKPI'],
+        $scoreCalc['kehadiranPct'],
+        $scoreCalc['finalAchievement'],
+        $submissionId,
+    ]);
+}
+
+function handleVerifyEvidence(array $payload): void
+{
+    $evidenceId = intval($payload['evidenceId'] ?? 0);
+    $status = trim((string) ($payload['status'] ?? ''));
+    $note = trim((string) ($payload['note'] ?? ''));
+    $currentUser = $_SESSION['current_user'] ?? null;
+    $currentUserId = isset($currentUser['id']) ? (int) $currentUser['id'] : null;
+
+    if ($evidenceId <= 0) {
+        jsonResponse(['success' => false, 'error' => 'ID evidence tidak valid.']);
+    }
+    if (!in_array($status, ['verified', 'rejected'], true)) {
+        jsonResponse(['success' => false, 'error' => 'Status evidence tidak valid.']);
+    }
+    if ($status === 'rejected' && $note === '') {
+        jsonResponse(['success' => false, 'error' => 'Catatan wajib diisi saat evidence ditolak.']);
+    }
+    if (strlen($note) > 2000) {
+        jsonResponse(['success' => false, 'error' => 'Catatan verifikasi maksimal 2000 karakter.']);
+    }
+
+    $pdo = getDb();
+    $stmt = $pdo->prepare(
+        'SELECT evidence.id, evidence.verification_status, evidence.verifier_note,
+                answer.id AS answer_id, submissions.id AS submission_id, submissions.user_id, submissions.status AS submission_status
+         FROM submission_answer_evidences evidence
+         INNER JOIN submission_answers answer ON answer.id = evidence.submission_answer_id
+         INNER JOIN submissions ON submissions.id = answer.submission_id
+         WHERE evidence.id = ? LIMIT 1'
+    );
+    $stmt->execute([$evidenceId]);
+    $evidence = $stmt->fetch();
+    if (!$evidence) {
+        jsonResponse(['success' => false, 'error' => 'Evidence tidak ditemukan.'], 404);
+    }
+    if ($evidence['submission_status'] === 'Approved') {
+        jsonResponse(['success' => false, 'error' => 'Submission sudah Approved dan terkunci.'], 423);
+    }
+
+    $canVerify = isAdmin()
+        || ($currentUserId !== null && evaluatorCanAssess($currentUserId, (int) $evidence['user_id']));
+    if (!$canVerify) {
+        jsonResponse(['success' => false, 'error' => 'Akses verifikasi evidence ditolak.'], 403);
+    }
+
+    $pdo->beginTransaction();
+    try {
+        $update = $pdo->prepare(
+            'UPDATE submission_answer_evidences
+             SET is_verified = ?, verification_status = ?, verifier_note = ?, verified_by = ?, verified_at = CURRENT_TIMESTAMP
+             WHERE id = ?'
+        );
+        $update->execute([
+            $status === 'verified' ? 1 : 0,
+            $status,
+            $note,
+            $currentUserId,
+            $evidenceId,
+        ]);
+        syncAnswerEvidenceStatus($pdo, (int) $evidence['answer_id']);
+        recordSubmissionAudit(
+            (int) $evidence['submission_id'],
+            (int) $evidence['answer_id'],
+            $currentUserId,
+            $status === 'verified' ? 'evidence_verified' : 'evidence_rejected',
+            ['status' => $evidence['verification_status'], 'note' => $evidence['verifier_note']],
+            ['status' => $status, 'note' => $note],
+            $note
+        );
+        $pdo->commit();
+    } catch (Throwable $ex) {
+        $pdo->rollBack();
+        throw $ex;
+    }
+    securityAudit($status === 'verified' ? 'evidence_verified' : 'evidence_rejected', [
+        'evidence_id' => $evidenceId,
+        'status' => $status,
+    ]);
+    jsonResponse(['success' => true]);
+}
+
+function handleApproveSubmissionWithEvidence(array $payload): void
+{
     if (!isAdmin()) {
         jsonResponse(['success' => false, 'error' => 'Akses ditolak.'], 403);
     }
@@ -288,9 +510,157 @@ function handleApprove(array $payload): void
     }
 
     $pdo = getDb();
+    $submissionStmt = $pdo->prepare('SELECT id, posisi, status FROM submissions WHERE id = ? LIMIT 1');
+    $submissionStmt->execute([$id]);
+    $submission = $submissionStmt->fetch();
+    if (!$submission) {
+        jsonResponse(['success' => false, 'error' => 'Submission tidak ditemukan.'], 404);
+    }
+    if ($submission['status'] === 'Approved') {
+        jsonResponse(['success' => false, 'error' => 'Submission sudah Approved.'], 409);
+    }
+
+    $definition = loadSubmissionDefinitionSnapshot($id);
+    if (!$definition) {
+        $definitions = getKpiDefinitions();
+        $definition = $definitions[$submission['posisi']] ?? ['kpis' => []];
+    }
+    $requiredEvidenceCount = 0;
+    foreach (($definition['kpis'] ?? []) as $kpi) {
+        $requiredEvidenceCount += count(array_filter(
+            array_map(fn ($item) => trim((string) $item), $kpi['evidenceChecklist'] ?? []),
+            fn ($item) => $item !== ''
+        ));
+    }
+
+    $evidenceStmt = $pdo->prepare(
+        'SELECT
+            COUNT(evidence.id) AS total_evidence,
+            SUM(CASE WHEN evidence.is_submitted = 0 OR evidence.verification_status <> ? THEN 1 ELSE 0 END) AS incomplete_evidence
+         FROM submission_answers answer
+         LEFT JOIN submission_answer_evidences evidence ON evidence.submission_answer_id = answer.id
+         WHERE answer.submission_id = ?'
+    );
+    $evidenceStmt->execute(['verified', $id]);
+    $evidenceStatus = $evidenceStmt->fetch();
+    $totalEvidence = (int) ($evidenceStatus['total_evidence'] ?? 0);
+    $incompleteEvidence = (int) ($evidenceStatus['incomplete_evidence'] ?? 0);
+    if ($totalEvidence > 0 && ($totalEvidence < $requiredEvidenceCount || $incompleteEvidence > 0)) {
+        jsonResponse([
+            'success' => false,
+            'error' => 'Approval ditolak: seluruh evidence wajib harus berstatus verified terlebih dahulu.',
+        ]);
+    }
+    $finalTierStmt = $pdo->prepare(
+        'SELECT COUNT(*) FROM submission_answers
+         WHERE submission_id = ? AND final_tier IS NULL'
+    );
+    $finalTierStmt->execute([$id]);
+    if ((int) $finalTierStmt->fetchColumn() > 0) {
+        jsonResponse([
+            'success' => false,
+            'error' => 'Approval ditolak: seluruh final score KPI harus disimpan terlebih dahulu.',
+        ]);
+    }
+
     $stmt = $pdo->prepare('UPDATE submissions SET status = ?, catatan = ? WHERE id = ?');
     $stmt->execute(['Approved', '', $id]);
-    securityAudit('submission_approved', ['submission_id' => $id]);
+    $actorUserId = isset($_SESSION['current_user']['id']) ? (int) $_SESSION['current_user']['id'] : null;
+    recordSubmissionAudit($id, null, $actorUserId, 'submission_approved', ['status' => $submission['status']], ['status' => 'Approved'], '');
+    securityAudit('submission_approved_with_evidence', ['submission_id' => $id]);
+    jsonResponse(['success' => true]);
+}
+
+function handleUpdateFinalKpiDecision(array $payload): void
+{
+    $answerId = intval($payload['submissionAnswerId'] ?? 0);
+    $finalTier = filter_var($payload['finalTier'] ?? null, FILTER_VALIDATE_INT);
+    $decisionReason = trim((string) ($payload['decisionReason'] ?? ''));
+    $coachingNote = trim((string) ($payload['coachingNote'] ?? ''));
+    $currentUserId = isset($_SESSION['current_user']['id']) ? (int) $_SESSION['current_user']['id'] : null;
+
+    if ($answerId <= 0 || $finalTier === false || !in_array($finalTier, [0, 1, 2], true)) {
+        jsonResponse(['success' => false, 'error' => 'Data final score tidak valid.']);
+    }
+    if (strlen($decisionReason) > 3000 || strlen($coachingNote) > 3000) {
+        jsonResponse(['success' => false, 'error' => 'Decision reason dan coaching note maksimal 3000 karakter.']);
+    }
+
+    $pdo = getDb();
+    $stmt = $pdo->prepare(
+        'SELECT answer.*, submissions.id AS submission_id, submissions.user_id,
+                submissions.posisi, submissions.status AS submission_status
+         FROM submission_answers answer
+         INNER JOIN submissions ON submissions.id = answer.submission_id
+         WHERE answer.id = ? LIMIT 1'
+    );
+    $stmt->execute([$answerId]);
+    $answer = $stmt->fetch();
+    if (!$answer) {
+        jsonResponse(['success' => false, 'error' => 'Submission answer tidak ditemukan.'], 404);
+    }
+    if ($answer['submission_status'] === 'Approved') {
+        jsonResponse(['success' => false, 'error' => 'Submission sudah Approved dan terkunci.'], 423);
+    }
+
+    $canUpdate = isAdmin()
+        || ($currentUserId !== null && evaluatorCanAssess($currentUserId, (int) $answer['user_id']));
+    if (!$canUpdate) {
+        jsonResponse(['success' => false, 'error' => 'Akses update final score ditolak.'], 403);
+    }
+
+    $calculatedTier = $answer['calculated_tier'] !== null ? (int) $answer['calculated_tier'] : (int) $answer['tier'];
+    if ($finalTier !== $calculatedTier && $decisionReason === '') {
+        jsonResponse(['success' => false, 'error' => 'Decision reason wajib diisi saat final score berbeda dari calculated score.']);
+    }
+    if ($finalTier === 2) {
+        $evidenceStmt = $pdo->prepare(
+            'SELECT COUNT(*) AS total,
+                    SUM(CASE WHEN is_submitted = 0 OR verification_status <> ? THEN 1 ELSE 0 END) AS incomplete
+             FROM submission_answer_evidences WHERE submission_answer_id = ?'
+        );
+        $evidenceStmt->execute(['verified', $answerId]);
+        $evidence = $evidenceStmt->fetch();
+        if ((int) ($evidence['total'] ?? 0) > 0 && (int) ($evidence['incomplete'] ?? 0) > 0) {
+            jsonResponse(['success' => false, 'error' => 'Final score 2 hanya dapat disimpan setelah required evidence verified.']);
+        }
+    }
+
+    $pdo->beginTransaction();
+    try {
+        $update = $pdo->prepare(
+            'UPDATE submission_answers
+             SET final_tier = ?, tier = ?, decision_reason = ?, coaching_note = ?
+             WHERE id = ?'
+        );
+        $update->execute([$finalTier, $finalTier, $decisionReason, $coachingNote, $answerId]);
+        recalculateSubmissionScores($pdo, (int) $answer['submission_id']);
+        if ($answer['submission_status'] !== 'Approved') {
+            $statusUpdate = $pdo->prepare('UPDATE submissions SET status = ? WHERE id = ?');
+            $statusUpdate->execute(['Evidence Reviewed', (int) $answer['submission_id']]);
+        }
+        recordSubmissionAudit(
+            (int) $answer['submission_id'],
+            $answerId,
+            $currentUserId,
+            'final_tier_updated',
+            [
+                'finalTier' => $answer['final_tier'] !== null ? (int) $answer['final_tier'] : null,
+                'decisionReason' => $answer['decision_reason'],
+                'coachingNote' => $answer['coaching_note'],
+            ],
+            [
+                'finalTier' => $finalTier,
+                'decisionReason' => $decisionReason,
+                'coachingNote' => $coachingNote,
+            ],
+            $decisionReason
+        );
+        $pdo->commit();
+    } catch (Throwable $ex) {
+        $pdo->rollBack();
+        throw $ex;
+    }
     jsonResponse(['success' => true]);
 }
 
@@ -310,8 +680,19 @@ function handleRevisi(array $payload): void
     }
 
     $pdo = getDb();
+    $existing = $pdo->prepare('SELECT status FROM submissions WHERE id = ? LIMIT 1');
+    $existing->execute([$id]);
+    $submission = $existing->fetch();
+    if (!$submission) {
+        jsonResponse(['success' => false, 'error' => 'Submission tidak ditemukan.'], 404);
+    }
+    if ($submission['status'] === 'Approved') {
+        jsonResponse(['success' => false, 'error' => 'Submission sudah Approved dan terkunci.'], 423);
+    }
     $stmt = $pdo->prepare('UPDATE submissions SET status = ?, catatan = ? WHERE id = ?');
     $stmt->execute(['Revisi', $note, $id]);
+    $actorUserId = isset($_SESSION['current_user']['id']) ? (int) $_SESSION['current_user']['id'] : null;
+    recordSubmissionAudit($id, null, $actorUserId, 'revision_requested', ['status' => $submission['status']], ['status' => 'Revisi'], $note);
     securityAudit('submission_revision_requested', ['submission_id' => $id]);
     jsonResponse(['success' => true]);
 }
@@ -615,6 +996,21 @@ function normalizeKpiDefinitions(array $rawDefinitions): array
                 jsonResponse(['success' => false, 'error' => "ID KPI {$id} pada {$positionName} harus unik."]);
             }
 
+            $rawEvidenceChecklist = is_array($rawKpi['evidenceChecklist'] ?? null) ? $rawKpi['evidenceChecklist'] : [];
+            if (count($rawEvidenceChecklist) > 20) {
+                jsonResponse(['success' => false, 'error' => "Checklist bukti pada KPI {$name} melebihi batas sistem."]);
+            }
+            $evidenceChecklist = [];
+            foreach ($rawEvidenceChecklist as $rawEvidenceItem) {
+                $evidenceItem = trim((string) $rawEvidenceItem);
+                if ($evidenceItem === '' || strlen($evidenceItem) > 255) {
+                    jsonResponse(['success' => false, 'error' => "Checklist bukti pada KPI {$name} harus diisi dan maksimal 255 karakter."]);
+                }
+                if (!in_array($evidenceItem, $evidenceChecklist, true)) {
+                    $evidenceChecklist[] = $evidenceItem;
+                }
+            }
+
             $rawTiers = $rawKpi['tiers'] ?? null;
             if (!is_array($rawTiers) || $rawTiers === [] || count($rawTiers) > 20) {
                 jsonResponse(['success' => false, 'error' => "KPI {$name} harus memiliki minimal satu opsi capaian."]);
@@ -669,6 +1065,7 @@ function normalizeKpiDefinitions(array $rawDefinitions): array
                 'bobot' => (float) $weight,
                 'target' => $target,
                 'unit' => $unit,
+                'evidenceChecklist' => $evidenceChecklist,
                 'tiers' => $tiers,
             ];
         }

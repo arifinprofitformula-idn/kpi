@@ -107,8 +107,15 @@ export default function App() {
     {tab === 'input' && canEvaluate && (data.assessableUsers.length
       ? <InputKpi assessableUsers={data.assessableUsers} definitions={data.posisiData} onSaved={loadData} />
       : <div className="card empty-state">Belum ada akun yang ditugaskan untuk Anda nilai.</div>)}
-    {tab === 'results' && <Approval submissions={data.submissions} />}
+    {tab === 'results' && <Approval submissions={data.submissions} role={auth.role} onRefresh={loadData} />}
     {tab === 'users' && isAdmin && <Users users={data.users} definitions={data.posisiData} onRefresh={loadData} />}
-    {tab === 'settings' && isAdmin && <KpiSettings key={Object.keys(data.posisiData).join('|')} definitions={data.posisiData} onSaved={(definitions) => setData((current) => ({ ...current, posisiData: definitions }))} />}
+    {tab === 'settings' && isAdmin && <KpiSettings
+      key={Object.keys(data.posisiData).join('|')}
+      definitions={data.posisiData}
+      onSaved={async (definitions) => {
+        setData((current) => ({ ...current, posisiData: definitions }));
+        await loadData();
+      }}
+    />}
   </>;
 }

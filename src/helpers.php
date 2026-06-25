@@ -310,13 +310,157 @@ function loadSubmissionAnswers(int $submissionId): array
 {
     $pdo = getDb();
     ensureAppSchema($pdo);
-    $stmt = $pdo->prepare('SELECT kpi_id AS id, tier, actual_value AS actualValue, link FROM submission_answers WHERE submission_id = ? ORDER BY id ASC');
+    $stmt = $pdo->prepare(
+        'SELECT id AS answerId, kpi_id AS id, tier, calculated_tier AS calculatedTier,
+                final_tier AS finalTier, actual_value AS actualValue, link,
+                evidence_notes AS notes, evidence_checklist_json AS checklistJson,
+                achievement_note AS achievementNote, decision_reason AS decisionReason,
+                coaching_note AS coachingNote, evidence_status AS evidenceStatus
+         FROM submission_answers WHERE submission_id = ? ORDER BY id ASC'
+    );
     $stmt->execute([$submissionId]);
-    return array_map(function ($answer) {
+    $answers = array_map(function ($answer) {
         $answer['tier'] = (int) $answer['tier'];
+        $answer['calculatedTier'] = $answer['calculatedTier'] !== null ? (int) $answer['calculatedTier'] : (int) $answer['tier'];
+        $answer['finalTier'] = $answer['finalTier'] !== null ? (int) $answer['finalTier'] : (int) $answer['tier'];
         $answer['actualValue'] = $answer['actualValue'] !== null ? (float) $answer['actualValue'] : null;
+        $checklist = is_string($answer['checklistJson'] ?? null) && $answer['checklistJson'] !== ''
+            ? json_decode($answer['checklistJson'], true)
+            : [];
+        $answer['checklist'] = is_array($checklist) ? array_values(array_filter(
+            array_map(fn ($item) => trim((string) $item), $checklist),
+            fn ($item) => $item !== ''
+        )) : [];
+        unset($answer['checklistJson']);
         return $answer;
     }, $stmt->fetchAll());
+    $evidencesByAnswer = loadSubmissionAnswerEvidences(array_column($answers, 'answerId'));
+    foreach ($answers as &$answer) {
+        $answer['evidences'] = $evidencesByAnswer[(int) $answer['answerId']] ?? [];
+    }
+    unset($answer);
+    return $answers;
+}
+
+function recordSubmissionAudit(
+    int $submissionId,
+    ?int $submissionAnswerId,
+    ?int $actorUserId,
+    string $event,
+    mixed $oldValue = null,
+    mixed $newValue = null,
+    string $note = ''
+): void {
+    ensureAppSchema();
+    $encode = fn ($value) => $value === null
+        ? null
+        : json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    $stmt = getDb()->prepare(
+        'INSERT INTO submission_audit_logs
+         (submission_id, submission_answer_id, actor_user_id, event, old_value, new_value, note)
+         VALUES (?, ?, ?, ?, ?, ?, ?)'
+    );
+    $stmt->execute([
+        $submissionId,
+        $submissionAnswerId,
+        $actorUserId,
+        $event,
+        $encode($oldValue),
+        $encode($newValue),
+        $note,
+    ]);
+}
+
+function loadSubmissionAuditLogs(int $submissionId): array
+{
+    ensureAppSchema();
+    $stmt = getDb()->prepare(
+        'SELECT audit.*, actor.name AS actor_name
+         FROM submission_audit_logs audit
+         LEFT JOIN users actor ON actor.id = audit.actor_user_id
+         WHERE audit.submission_id = ?
+         ORDER BY audit.id DESC'
+    );
+    $stmt->execute([$submissionId]);
+    return array_map(function ($log) {
+        return [
+            'id' => (int) $log['id'],
+            'submissionAnswerId' => $log['submission_answer_id'] !== null ? (int) $log['submission_answer_id'] : null,
+            'actorUserId' => $log['actor_user_id'] !== null ? (int) $log['actor_user_id'] : null,
+            'actorName' => $log['actor_name'],
+            'event' => $log['event'],
+            'oldValue' => is_string($log['old_value']) ? json_decode($log['old_value'], true) : null,
+            'newValue' => is_string($log['new_value']) ? json_decode($log['new_value'], true) : null,
+            'note' => $log['note'],
+            'createdAt' => $log['created_at'],
+        ];
+    }, $stmt->fetchAll());
+}
+
+function loadSubmissionAnswerEvidences(array $answerIds): array
+{
+    $answerIds = array_values(array_unique(array_filter(array_map('intval', $answerIds), fn ($id) => $id > 0)));
+    if ($answerIds === []) {
+        return [];
+    }
+
+    $placeholders = implode(',', array_fill(0, count($answerIds), '?'));
+    $stmt = getDb()->prepare(
+        "SELECT evidence.*, verifier.name AS verifier_name
+         FROM submission_answer_evidences evidence
+         LEFT JOIN users verifier ON verifier.id = evidence.verified_by
+         WHERE evidence.submission_answer_id IN ({$placeholders})
+         ORDER BY evidence.id ASC"
+    );
+    $stmt->execute($answerIds);
+    $grouped = [];
+    foreach ($stmt->fetchAll() as $evidence) {
+        $grouped[(int) $evidence['submission_answer_id']][] = [
+            'id' => (int) $evidence['id'],
+            'requirementId' => $evidence['requirement_id'],
+            'requirementLabel' => $evidence['requirement_label'],
+            'expectedFormat' => $evidence['expected_format'],
+            'evidenceUrl' => $evidence['evidence_url'],
+            'submittedNote' => $evidence['submitted_note'],
+            'isSubmitted' => (bool) $evidence['is_submitted'],
+            'verificationStatus' => $evidence['is_submitted'] ? $evidence['verification_status'] : 'missing',
+            'verifierNote' => $evidence['verifier_note'],
+            'verifiedBy' => $evidence['verified_by'] !== null ? [
+                'id' => (int) $evidence['verified_by'],
+                'name' => $evidence['verifier_name'],
+            ] : null,
+            'verifiedAt' => $evidence['verified_at'],
+        ];
+    }
+    return $grouped;
+}
+
+function evidenceItemsForAnswer(array $kpi, ?array $answer): array
+{
+    $required = is_array($kpi['evidenceChecklist'] ?? null) ? $kpi['evidenceChecklist'] : [];
+    $stored = is_array($answer['evidences'] ?? null) ? $answer['evidences'] : [];
+    if ($stored !== [] || $required === []) {
+        return $stored;
+    }
+
+    $checked = is_array($answer['checklist'] ?? null) ? $answer['checklist'] : [];
+    return array_values(array_map(function ($label, $index) use ($answer, $checked) {
+        $label = trim((string) $label);
+        $isSubmitted = in_array($label, $checked, true);
+        return [
+            'id' => null,
+            'requirementId' => ($answer['id'] ?? 'kpi') . ':' . ($index + 1),
+            'requirementLabel' => $label,
+            'expectedFormat' => '',
+            'evidenceUrl' => $answer['link'] ?? '',
+            'submittedNote' => $answer['notes'] ?? '',
+            'isSubmitted' => $isSubmitted,
+            'verificationStatus' => $isSubmitted ? 'pending' : 'missing',
+            'verifierNote' => null,
+            'verifiedBy' => null,
+            'verifiedAt' => null,
+        ];
+    }, $required, array_keys($required)));
 }
 
 function normalizeSubmission(array $submission): array
@@ -324,6 +468,18 @@ function normalizeSubmission(array $submission): array
     $definitions = getKpiDefinitions();
     $snapshot = loadSubmissionDefinitionSnapshot((int) $submission['id']);
     $definition = $snapshot ?? ($definitions[$submission['posisi']] ?? ['kpis' => []]);
+    $answers = loadSubmissionAnswers((int) $submission['id']);
+    foreach ($answers as &$answer) {
+        $kpi = null;
+        foreach (($definition['kpis'] ?? []) as $definitionKpi) {
+            if (($definitionKpi['id'] ?? '') === ($answer['id'] ?? '')) {
+                $kpi = $definitionKpi;
+                break;
+            }
+        }
+        $answer['evidences'] = $kpi ? evidenceItemsForAnswer($kpi, $answer) : ($answer['evidences'] ?? []);
+    }
+    unset($answer);
 
     return [
         'id' => (string) $submission['id'],
@@ -351,8 +507,9 @@ function normalizeSubmission(array $submission): array
         ],
         'catatan' => $submission['catatan'],
         'created_at' => $submission['created_at'],
-        'kpiAnswers' => loadSubmissionAnswers((int) $submission['id']),
+        'kpiAnswers' => $answers,
         'definition' => $definition,
+        'auditLogs' => loadSubmissionAuditLogs((int) $submission['id']),
     ];
 }
 

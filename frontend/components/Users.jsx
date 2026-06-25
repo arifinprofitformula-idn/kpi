@@ -133,6 +133,7 @@ export default function Users({ users, definitions, onRefresh }) {
   const [editForm, setEditForm] = useState(null);
   const [search, setSearch] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   const positions = Object.keys(definitions);
   const filteredUsers = useMemo(() => {
     const keyword = search.trim().toLocaleLowerCase('id');
@@ -142,20 +143,43 @@ export default function Users({ users, definitions, onRefresh }) {
   }, [search, users]);
 
   async function save(payload, editing = false) {
+    const cleanPayload = {
+      ...payload,
+      name: payload.name.trim(),
+      username: payload.username.trim().toLowerCase(),
+      email: payload.email.trim().toLowerCase(),
+      posisi: payload.role === 'admin' ? 'Administrator' : payload.posisi,
+      subjectIds: Array.isArray(payload.subjectIds) ? payload.subjectIds : [],
+    };
+    if (!cleanPayload.name || !cleanPayload.username || !cleanPayload.email || !cleanPayload.posisi) {
+      alert('Nama, username, email, dan posisi wajib diisi.');
+      return;
+    }
+    if (!editing && !cleanPayload.password) {
+      alert('Password akun baru wajib diisi.');
+      return;
+    }
+    if (cleanPayload.password && cleanPayload.password.length < 10) {
+      alert('Password minimal 10 karakter.');
+      return;
+    }
+
     setSubmitting(true);
-    const result = await api('saveUser', payload);
+    const result = await api('saveUser', cleanPayload);
     setSubmitting(false);
-    if (!result.success) return alert(result.error);
+    if (!result.success) return alert(result.error || 'Akun gagal disimpan.');
     if (editing) setEditForm(null);
     else setForm(EMPTY_USER);
-    onRefresh();
+    await onRefresh();
   }
 
   async function remove(user) {
     if (!confirm(`Hapus akun ${user.nama}?`)) return;
+    setDeletingId(user.id);
     const result = await api('deleteUser', { id: user.id });
-    if (!result.success) return alert(result.error);
-    onRefresh();
+    setDeletingId(null);
+    if (!result.success) return alert(result.error || 'Akun gagal dihapus.');
+    await onRefresh();
   }
 
   function edit(user) {
@@ -196,8 +220,8 @@ export default function Users({ users, definitions, onRefresh }) {
           <td data-label="Menilai">{user.subjectIds?.length || 0} akun</td>
           <td data-label="Status"><span className={`status-badge ${user.isActive ? 'status-approved' : 'status-revisi'}`}>{user.isActive ? 'Aktif' : 'Nonaktif'}</span></td>
           <td data-label="Aksi"><div className="row-actions user-row-actions">
-            <button className="user-action-button edit" type="button" onClick={() => edit(user)}>Edit</button>
-            <button className="user-action-button delete" type="button" onClick={() => remove(user)}>Hapus</button>
+            <button className="user-action-button edit" type="button" onClick={() => edit(user)} disabled={submitting || deletingId === user.id}>Edit</button>
+            <button className="user-action-button delete" type="button" onClick={() => remove(user)} disabled={submitting || deletingId === user.id}>{deletingId === user.id ? 'Menghapus...' : 'Hapus'}</button>
           </div></td>
         </tr>)}</tbody>
       </table>{filteredUsers.length === 0 && <div className="empty-state">Akun tidak ditemukan.</div>}</div>

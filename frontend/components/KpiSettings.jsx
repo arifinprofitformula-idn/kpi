@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api } from '../lib/api.js';
-import { OPERATORS, clone, formatRule, newKpi } from '../lib/kpi.js';
+import { OPERATORS, clone, evidenceChecklist, formatRule, newKpi } from '../lib/kpi.js';
 
 const UNIT_OPTIONS = ['%', 'Rp', 'Unit', 'Gram', 'Hari', 'Aktivitas', 'Dokumen'];
 const CUSTOM_UNIT = '__custom__';
@@ -12,6 +12,7 @@ function kpiIsComplete(kpi) {
     && Number(kpi.bobot) > 0
     && kpi.unit?.trim()
     && kpi.target?.trim()
+    && (!kpi.evidenceChecklist || kpi.evidenceChecklist.every((item) => String(item || '').trim()))
     && kpi.tiers?.length
     && kpi.tiers.every((tier) => (
       tier.label?.trim()
@@ -53,8 +54,40 @@ export default function KpiSettings({ definitions, onSaved }) {
   const [positionName, setPositionName] = useState(() => Object.keys(definitions)[0] || '');
   const [expandedKpi, setExpandedKpi] = useState(0);
   const [confirmation, setConfirmation] = useState(null);
+  const [saving, setSaving] = useState(false);
   const positions = Object.keys(draft);
   const definition = draft[selectedPosition];
+
+  function buildDraftWithCommittedPositionName(sourceDraft = draft) {
+    const trimmedName = positionName.trim();
+    if (!selectedPosition || !sourceDraft[selectedPosition]) {
+      return { definitions: clone(sourceDraft), selected: selectedPosition, error: '' };
+    }
+    if (!trimmedName) {
+      return { definitions: clone(sourceDraft), selected: selectedPosition, error: 'Nama posisi wajib diisi.' };
+    }
+    if (trimmedName === selectedPosition) {
+      return { definitions: clone(sourceDraft), selected: selectedPosition, error: '' };
+    }
+    if (sourceDraft[trimmedName]) {
+      return { definitions: clone(sourceDraft), selected: selectedPosition, error: 'Nama posisi sudah digunakan.' };
+    }
+
+    const next = {};
+    Object.keys(sourceDraft).forEach((position) => {
+      next[position === selectedPosition ? trimmedName : position] = sourceDraft[position];
+    });
+    return { definitions: next, selected: trimmedName, error: '' };
+  }
+
+  function definitionsAreValid(definitionsToValidate) {
+    const names = Object.keys(definitionsToValidate);
+    return names.length > 0 && names.every((position) => {
+      const kpis = definitionsToValidate[position].kpis || [];
+      const total = kpis.reduce((sum, item) => sum + Number(item.bobot || 0), 0);
+      return kpis.length > 0 && Math.abs(total - 100) < 0.001 && kpis.every(kpiIsComplete);
+    });
+  }
 
   function updateKpi(kpiIndex, field, value) {
     setDraft((current) => {
@@ -74,6 +107,33 @@ export default function KpiSettings({ definitions, onSaved }) {
     });
   }
 
+  function updateEvidenceItem(kpiIndex, itemIndex, value) {
+    setDraft((current) => {
+      const next = clone(current);
+      next[selectedPosition].kpis[kpiIndex].evidenceChecklist ??= [];
+      next[selectedPosition].kpis[kpiIndex].evidenceChecklist[itemIndex] = value;
+      return next;
+    });
+  }
+
+  function addEvidenceItem(kpiIndex) {
+    setDraft((current) => {
+      const next = clone(current);
+      next[selectedPosition].kpis[kpiIndex].evidenceChecklist ??= [];
+      next[selectedPosition].kpis[kpiIndex].evidenceChecklist.push('');
+      return next;
+    });
+  }
+
+  function removeEvidenceItem(kpiIndex, itemIndex) {
+    setDraft((current) => {
+      const next = clone(current);
+      next[selectedPosition].kpis[kpiIndex].evidenceChecklist = (next[selectedPosition].kpis[kpiIndex].evidenceChecklist || [])
+        .filter((_, index) => index !== itemIndex);
+      return next;
+    });
+  }
+
   function selectPosition(name) {
     setSelectedPosition(name);
     setPositionName(name);
@@ -84,8 +144,11 @@ export default function KpiSettings({ definitions, onSaved }) {
     let name = 'Posisi Baru';
     let count = 2;
     while (draft[name]) name = `Posisi Baru ${count++}`;
-    setDraft({ ...draft, [name]: { kpis: [newKpi('k1', 100)] } });
-    selectPosition(name);
+    const next = { ...draft, [name]: { kpis: [newKpi('k1', 100)] } };
+    setDraft(next);
+    setSelectedPosition(name);
+    setPositionName(name);
+    setExpandedKpi(0);
   }
 
   function renamePosition(name) {
@@ -153,10 +216,25 @@ export default function KpiSettings({ definitions, onSaved }) {
   }
 
   async function save() {
-    const result = await api('saveKpiDefinitions', { definitions: draft });
-    if (!result.success) return alert(result.error);
+    const committed = buildDraftWithCommittedPositionName();
+    if (committed.error) {
+      alert(committed.error);
+      return;
+    }
+    if (!definitionsAreValid(committed.definitions)) {
+      alert('Total bobot harus 100% dan seluruh field KPI harus lengkap sebelum pengaturan dapat disimpan.');
+      return;
+    }
+
+    setSaving(true);
+    setDraft(committed.definitions);
+    setSelectedPosition(committed.selected);
+    setPositionName(committed.selected);
+    const result = await api('saveKpiDefinitions', { definitions: committed.definitions });
+    setSaving(false);
+    if (!result.success) return alert(result.error || 'Pengaturan KPI gagal disimpan.');
     alert('Pengaturan KPI berhasil disimpan.');
-    onSaved(result.data.posisiData);
+    await onSaved(result.data.posisiData);
   }
 
   function reset() {
@@ -170,11 +248,8 @@ export default function KpiSettings({ definitions, onSaved }) {
 
   const totalWeight = definition?.kpis.reduce((sum, item) => sum + Number(item.bobot || 0), 0) || 0;
   const validation = positionValidation(totalWeight);
-  const allPositionsValid = positions.length > 0 && positions.every((position) => {
-    const kpis = draft[position].kpis || [];
-    const total = kpis.reduce((sum, item) => sum + Number(item.bobot || 0), 0);
-    return kpis.length > 0 && Math.abs(total - 100) < 0.001 && kpis.every(kpiIsComplete);
-  });
+  const committedPreview = buildDraftWithCommittedPositionName();
+  const allPositionsValid = !committedPreview.error && definitionsAreValid(committedPreview.definitions);
 
   return <div className="kpi-builder">
     <section className="builder-header-card">
@@ -213,6 +288,7 @@ export default function KpiSettings({ definitions, onSaved }) {
         {definition.kpis.map((kpi, kpiIndex) => {
           const complete = kpiIsComplete(kpi);
           const expanded = expandedKpi === kpiIndex;
+          const checklist = kpi.evidenceChecklist || [];
           return <article className={`kpi-accordion-card ${expanded ? 'expanded' : ''}`} key={`${kpi.id}-${kpiIndex}`}>
             <div className="kpi-accordion-summary">
               <button className="accordion-toggle" onClick={() => setExpandedKpi(expanded ? null : kpiIndex)} aria-expanded={expanded}>
@@ -222,6 +298,7 @@ export default function KpiSettings({ definitions, onSaved }) {
               <div className="kpi-quick-meta">
                 <span><small>Bobot</small><strong>{Number(kpi.bobot || 0)}%</strong></span>
                 <span><small>Satuan</small><strong>{kpi.unit || '-'}</strong></span>
+                <span><small>Bukti</small><strong>{evidenceChecklist(kpi).length} item</strong></span>
                 <span className={`completion-badge ${complete ? 'complete' : 'incomplete'}`}>{complete ? 'Lengkap' : 'Belum Lengkap'}</span>
               </div>
               <div className="kpi-card-actions">
@@ -265,6 +342,28 @@ export default function KpiSettings({ definitions, onSaved }) {
                 <label className="form-label">Target</label>
                 <textarea className="form-textarea" rows="3" value={kpi.target} onChange={(event) => updateKpi(kpiIndex, 'target', event.target.value)} />
               </div>
+
+              <section className="evidence-settings-section">
+                <div className="scoring-section-heading">
+                  <div>
+                    <h4>Checklist Bukti Wajib</h4>
+                    <p>Item yang diaktifkan di sini harus dicentang saat penilaian KPI disubmit.</p>
+                  </div>
+                  <button className="btn secondary small" type="button" onClick={() => addEvidenceItem(kpiIndex)}>+ Tambah Bukti</button>
+                </div>
+                <div className="evidence-settings-list">
+                  {checklist.map((item, itemIndex) => <div className="evidence-settings-row" key={itemIndex}>
+                    <input
+                      className="form-control"
+                      value={item}
+                      placeholder="Contoh: Dashboard Sales bulan berjalan"
+                      onChange={(event) => updateEvidenceItem(kpiIndex, itemIndex, event.target.value)}
+                    />
+                    <button className="btn danger-outline small" type="button" onClick={() => removeEvidenceItem(kpiIndex, itemIndex)}>Hapus</button>
+                  </div>)}
+                  {checklist.length === 0 && <div className="evidence-empty">Belum ada checklist bukti wajib untuk KPI ini.</div>}
+                </div>
+              </section>
 
               <section className="scoring-section">
                 <div className="scoring-section-heading">
@@ -321,8 +420,8 @@ export default function KpiSettings({ definitions, onSaved }) {
         {!allPositionsValid && <span>Total bobot harus 100% dan seluruh field KPI harus lengkap sebelum pengaturan dapat disimpan.</span>}
       </div>
       <div className="builder-save-buttons">
-        <button className="btn secondary" onClick={reset}>Batalkan</button>
-        <button className="btn" onClick={save} disabled={!allPositionsValid}>Simpan Pengaturan</button>
+        <button className="btn secondary" onClick={reset} disabled={saving}>Batalkan</button>
+        <button className="btn" onClick={save} disabled={!allPositionsValid || saving}>{saving ? 'Menyimpan...' : 'Simpan Pengaturan'}</button>
       </div>
     </footer>
 

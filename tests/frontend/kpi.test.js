@@ -4,6 +4,7 @@ import {
   achievementLabel,
   calculatedTier,
   defaultPeriod,
+  evidenceChecklist,
   formatRule,
   ruleMatches,
 } from '../../frontend/lib/kpi.js';
@@ -33,4 +34,9 @@ test('format and labels are deterministic', () => {
   assert.equal(formatRule({ operator: 'between', value: 80, max: 99 }, '%'), '80 % <= nilai <= 99 %');
   assert.deepEqual(achievementLabel(90), ['Sangat Baik', 'ach-sangat-baik']);
   assert.equal(defaultPeriod(new Date(2026, 5, 1)), 'Juni 2026');
+});
+
+test('evidenceChecklist ignores empty legacy values', () => {
+  assert.deepEqual(evidenceChecklist({ evidenceChecklist: ['Dashboard', ' ', null] }), ['Dashboard']);
+  assert.deepEqual(evidenceChecklist({}), []);
 });
