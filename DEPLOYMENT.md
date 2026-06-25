@@ -127,7 +127,23 @@ Generate hash password admin di komputer lokal. Gunakan password unik minimal
 php -r "echo password_hash('GANTI_PASSWORD_ADMIN', PASSWORD_DEFAULT), PHP_EOL;"
 ```
 
-Di root aplikasi, buat file `.env` dengan permission `600` atau `640`:
+Pilihan paling aman adalah menyimpan konfigurasi environment di luar document
+root. Buat file misalnya:
+
+```text
+/home/CPANEL_USER/.kpi.env
+```
+
+Lalu set environment variable `KPI_ENV_FILE` ke path tersebut melalui menu
+Environment Variables hosting jika tersedia. Jika hosting tidak mendukung
+environment variable, aplikasi juga otomatis mencari file `../.kpi.env`, yaitu
+satu folder di atas root aplikasi.
+
+Jika hosting tidak memungkinkan keduanya, buat file `.env` di root aplikasi
+dengan permission `600` atau `640`. File ini tetap diblokir oleh `.htaccess`,
+tetapi menyimpannya di luar document root lebih kuat.
+
+Isi file environment:
 
 ```ini
 KPI_APP_ENV="production"

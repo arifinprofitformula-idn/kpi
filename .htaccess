@@ -1,5 +1,9 @@
 Options -Indexes
 
+<Files ".env">
+    Require all denied
+</Files>
+
 <FilesMatch "(^\.|^(README|DEPLOYMENT)\.md$|^package(-lock)?\.json$|^vite\.config\.js$|^eslint\.config\.js$|^(init_db|config|db)\.php$)">
     Require all denied
 </FilesMatch>

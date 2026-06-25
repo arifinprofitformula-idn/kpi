@@ -8,13 +8,24 @@ function localEnvValues(): array
         return $values;
     }
 
-    $path = __DIR__ . '/.env';
-    if (!is_file($path) || !is_readable($path)) {
-        return $values = [];
+    $paths = [];
+    $explicitPath = getenv('KPI_ENV_FILE');
+    if (is_string($explicitPath) && trim($explicitPath) !== '') {
+        $paths[] = trim($explicitPath);
+    }
+    $paths[] = __DIR__ . '/.env';
+    $paths[] = dirname(__DIR__) . '/.kpi.env';
+
+    foreach ($paths as $path) {
+        if (!is_file($path) || !is_readable($path)) {
+            continue;
+        }
+
+        $parsed = parse_ini_file($path, false, INI_SCANNER_RAW);
+        return $values = is_array($parsed) ? $parsed : [];
     }
 
-    $parsed = parse_ini_file($path, false, INI_SCANNER_RAW);
-    return $values = is_array($parsed) ? $parsed : [];
+    return $values = [];
 }
 
 function envValue(string $key, string $default = ''): string

@@ -7,11 +7,11 @@ shared hosting.
 ## Kontrol yang diterapkan
 
 - Password hashing untuk seluruh akun individual.
-- Rate limiting login berbasis identifier IP yang di-hash.
+- Rate limiting login berbasis kombinasi IP dan username/email yang di-hash.
 - Session strict mode, cookie `HttpOnly`, `SameSite=Lax`, dan `Secure` pada
   production.
 - Prefix cookie `__Host-`, idle timeout, absolute timeout, dan rotasi session ID.
-- CSRF token untuk seluruh endpoint terautentikasi.
+- CSRF token untuk login dan seluruh endpoint terautentikasi.
 - Validasi same-origin, HTTP POST, JSON content type, dan ukuran payload.
 - Role authorization untuk admin, manager, supervisor, dan staff.
 - Prepared statements PDO dengan emulated prepares dinonaktifkan.
@@ -19,6 +19,8 @@ shared hosting.
 - Validasi URL HTTP/HTTPS serta batas panjang dan jumlah data.
 - JSON bootstrap di-encode dengan `JSON_HEX_*` untuk mencegah script breakout.
 - Source, schema, dotfile, installer, dan konfigurasi diblokir oleh Apache.
+- File environment dapat dipindahkan keluar document root melalui `KPI_ENV_FILE`
+  atau fallback `../.kpi.env`.
 - Migrasi schema dinonaktifkan di production agar user database dapat memakai
   least privilege.
 - Audit log untuk login, logout, approval, perubahan user, dan pengaturan KPI.
@@ -37,6 +39,7 @@ shared hosting.
 ## Persyaratan production
 
 - Gunakan HTTPS dan `KPI_APP_URL` yang tepat.
+- Simpan konfigurasi environment di luar document root jika hosting mendukung.
 - Gunakan password minimal 10 karakter dan berbeda untuk setiap akun.
 - Gunakan password database acak minimal 12 karakter.
 - Set `KPI_APP_DEBUG=0` dan `KPI_ALLOW_SCHEMA_MIGRATIONS=0`.

@@ -500,8 +500,11 @@ function handleLogin(array $payload): void
     if ($identifier === '' || strlen($identifier) > 255 || $password === '' || strlen($password) > 128) {
         jsonResponse(['success' => false, 'error' => 'Username/email atau password tidak valid.']);
     }
+    if (!verifyCsrfToken()) {
+        jsonResponse(['success' => false, 'error' => 'Token keamanan tidak valid. Muat ulang halaman.'], 419);
+    }
 
-    $rateLimit = loginRateLimitStatus();
+    $rateLimit = loginRateLimitStatus($identifier);
     if ($rateLimit['blocked']) {
         header('Retry-After: ' . $rateLimit['retry_after']);
         jsonResponse([
@@ -512,7 +515,7 @@ function handleLogin(array $payload): void
 
     $user = getUserByIdentifier($identifier);
     if (!$user || !password_verify($password, (string) $user['password_hash'])) {
-        recordFailedLogin();
+        recordFailedLogin($identifier);
         usleep(random_int(100000, 300000));
         jsonResponse(['success' => false, 'error' => 'Username/email atau password salah.']);
     }
@@ -523,7 +526,7 @@ function handleLogin(array $payload): void
         $rehash = getDb()->prepare('UPDATE users SET password_hash = ? WHERE id = ?');
         $rehash->execute([password_hash($password, PASSWORD_DEFAULT), $user['id']]);
     }
-    clearLoginAttempts();
+    clearLoginAttempts($identifier);
     session_regenerate_id(true);
     $_SESSION['created_at'] = time();
     $_SESSION['last_activity'] = time();

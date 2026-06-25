@@ -37,10 +37,15 @@ function getApiKey(): ?string
     return trim($apiKey);
 }
 
-function loginAttemptIdentifier(): string
+function loginAttemptIdentifier(?string $loginIdentifier = null): string
 {
     $remoteAddress = (string) ($_SERVER['REMOTE_ADDR'] ?? 'unknown');
-    return hash('sha256', $remoteAddress);
+    $normalizedLogin = strtolower(trim((string) $loginIdentifier));
+    if ($normalizedLogin === '') {
+        $normalizedLogin = 'unknown';
+    }
+
+    return hash('sha256', $remoteAddress . '|' . $normalizedLogin);
 }
 
 function securityAudit(string $event, array $context = []): void
@@ -49,7 +54,7 @@ function securityAudit(string $event, array $context = []): void
         'event' => $event,
         'role' => $_SESSION['role'] ?? getAuthorizedApiRole() ?? 'anonymous',
         'user_id' => $_SESSION['current_user']['id'] ?? null,
-        'client' => substr(loginAttemptIdentifier(), 0, 12),
+        'client' => substr(loginAttemptIdentifier($_SESSION['current_user']['username'] ?? null), 0, 12),
         'context' => $context,
     ];
     error_log('[KPI Audit] ' . json_encode($entry, JSON_UNESCAPED_SLASHES));
@@ -66,7 +71,7 @@ function authLoginAttemptsTableExists(): bool
     }
 }
 
-function loginRateLimitStatus(): array
+function loginRateLimitStatus(string $loginIdentifier): array
 {
     ensureAppSchema();
     if (!authLoginAttemptsTableExists()) {
@@ -77,7 +82,7 @@ function loginRateLimitStatus(): array
         'SELECT attempt_count, window_started, blocked_until
          FROM auth_login_attempts WHERE identifier = ? LIMIT 1'
     );
-    $stmt->execute([loginAttemptIdentifier()]);
+    $stmt->execute([loginAttemptIdentifier($loginIdentifier)]);
     $attempt = $stmt->fetch();
     $now = time();
     if (!$attempt || (int) $attempt['blocked_until'] <= $now) {
@@ -89,7 +94,7 @@ function loginRateLimitStatus(): array
     ];
 }
 
-function recordFailedLogin(): void
+function recordFailedLogin(string $loginIdentifier): void
 {
     ensureAppSchema();
     if (!authLoginAttemptsTableExists()) {
@@ -98,7 +103,7 @@ function recordFailedLogin(): void
     }
 
     $pdo = getDb();
-    $identifier = loginAttemptIdentifier();
+    $identifier = loginAttemptIdentifier($loginIdentifier);
     $now = time();
     $pdo->beginTransaction();
     try {
@@ -140,7 +145,7 @@ function recordFailedLogin(): void
     }
 }
 
-function clearLoginAttempts(): void
+function clearLoginAttempts(string $loginIdentifier): void
 {
     ensureAppSchema();
     if (!authLoginAttemptsTableExists()) {
@@ -148,7 +153,7 @@ function clearLoginAttempts(): void
     }
 
     $stmt = getDb()->prepare('DELETE FROM auth_login_attempts WHERE identifier = ?');
-    $stmt->execute([loginAttemptIdentifier()]);
+    $stmt->execute([loginAttemptIdentifier($loginIdentifier)]);
 }
 
 function getAuthorizedApiRole(): ?string
