@@ -259,7 +259,7 @@ function KpiPrintReport({ submission, onClose }) {
                 </tr>)}</tbody>
               </table> : <div className="formal-empty-summary">Tidak ada Input Data Aktual untuk KPI ini.</div>}
 
-              <div className="formal-verification-title">D. Evidence Checklist</div>
+              <div className="formal-verification-title">D. Dokumen Tambahan</div>
               {evidenceRows.length > 0 ? <table className="formal-verification-table formal-evidence-summary">
                 <thead><tr><th>Evidence</th><th>Expected Format</th><th>Link/File</th><th>Status</th><th>Verifier Note</th></tr></thead>
                 <tbody>{evidenceRows.map((evidence) => <tr key={evidence.id || evidence.requirementId || evidence.requirementLabel}>
@@ -495,8 +495,8 @@ function SubmissionModal({ submission, role, onClose, onExport, onRefresh }) {
                       <span className={`evidence-status evidence-status-${statusClassName}`}>{statusLabel}</span>
                     </div>
                     <div className="actual-data-review-value">{formatActualDataValue(row)}</div>
-                    {row.sourceDocument && <div className="evidence-note"><strong>Source:</strong> {String(row.sourceDocument).startsWith('http') ? <a href={row.sourceDocument} target="_blank" rel="noreferrer">{row.sourceDocument}</a> : row.sourceDocument}</div>}
-                    {row.dataDate && <div className="evidence-note"><strong>Data date:</strong> {row.dataDate}</div>}
+                    {row.sourceDocument && <div className="evidence-note"><strong>Sumber Dokumen / Bukti:</strong> {String(row.sourceDocument).startsWith('http') ? <a href={row.sourceDocument} target="_blank" rel="noreferrer">{row.sourceDocument}</a> : row.sourceDocument}</div>}
+                    {row.dataDate && <div className="evidence-note"><strong>Tanggal Data:</strong> {row.dataDate}</div>}
                     {row.submittedNote && <div className="evidence-note"><strong>Catatan submit:</strong> {row.submittedNote}</div>}
                     {row.verifierNote && <div className="evidence-note"><strong>Catatan reviewer:</strong> {row.verifierNote}</div>}
                   </div>
@@ -510,8 +510,8 @@ function SubmissionModal({ submission, role, onClose, onExport, onRefresh }) {
           </div>}
           <div>Skor: <strong>{answer?.tier ?? 0}</strong> {tier && `- ${tier.label}`}</div>
           {answer?.link && <a href={answer.link} target="_blank" rel="noreferrer">Buka bukti</a>}
-          {requiredEvidence.length > 0 && <div className="evidence-review">
-            <strong>Checklist bukti:</strong>
+          {requiredEvidence.length > 0 && <div className="evidence-review secondary-evidence-review">
+            <strong>Dokumen Tambahan:</strong>
             <ul>
               {requiredEvidence.map((item) => <li key={item} className={(answer?.checklist || []).includes(item) ? 'checked' : ''}>{item}</li>)}
             </ul>
@@ -525,7 +525,7 @@ function SubmissionModal({ submission, role, onClose, onExport, onRefresh }) {
                     <strong>{evidence.requirementLabel}</strong>
                     <span className={`evidence-status evidence-status-${statusClass}`}>{statusLabel}</span>
                   </div>
-                  {evidence.evidenceUrl && <a href={evidence.evidenceUrl} target="_blank" rel="noreferrer">Buka evidence</a>}
+                  {evidence.evidenceUrl && <a href={evidence.evidenceUrl} target="_blank" rel="noreferrer">Buka dokumen tambahan</a>}
                   {evidence.submittedNote && <div className="evidence-note"><strong>Catatan submit:</strong> {evidence.submittedNote}</div>}
                   {evidence.verifierNote && <div className="evidence-note"><strong>Catatan reviewer:</strong> {evidence.verifierNote}</div>}
                 </div>

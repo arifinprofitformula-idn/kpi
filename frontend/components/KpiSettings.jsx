@@ -752,6 +752,7 @@ export default function KpiSettings({ definitions, onSaved }) {
                   <div>
                     <h4>Checklist Bukti Wajib</h4>
                     <p>Item yang diaktifkan di sini harus dicentang saat penilaian KPI disubmit.</p>
+                    <p>Gunakan Evidence Tambahan hanya jika dokumen tidak bisa diwakili oleh Sumber Dokumen/Bukti pada Input Data Aktual.</p>
                   </div>
                   <button className="btn secondary small" type="button" onClick={() => addEvidenceItem(kpiIndex)}>+ Tambah Bukti</button>
                 </div>

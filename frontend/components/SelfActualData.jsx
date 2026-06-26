@@ -40,11 +40,53 @@ function sourceFieldFor(kpi) {
 export default function SelfActualData({ currentUser, definitions, onSaved }) {
   const [period, setPeriod] = useState(defaultPeriod());
   const [answers, setAnswers] = useState({});
+  const [expandedKpis, setExpandedKpis] = useState([0]);
+  const [expandedNotes, setExpandedNotes] = useState({});
   const [attendance, setAttendance] = useState({ sakit: 0, izin: 0, alpa: 0, cuti: 0 });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const definition = definitions[currentUser?.posisi];
+
+  function noteKey(kpiId, fieldId) {
+    return `${kpiId}:${fieldId}`;
+  }
+
+  function toggleKpi(index) {
+    setExpandedKpis((current) => (
+      current.includes(index)
+        ? current.filter((item) => item !== index)
+        : [...current, index]
+    ));
+  }
+
+  function kpiCompletion(kpi) {
+    const answer = { ...emptyAnswer(), ...answers[kpi.id] };
+    const missing = [];
+    actualDataFields(kpi).forEach((field) => {
+      const entry = answer.actualData?.[field.id] || {};
+      if (field.required && !actualDataIsFilled(field, entry)) missing.push(field.label);
+      if (field.sourceRequired && !String(entry.sourceDocument || '').trim()) missing.push(`${field.label} - sumber`);
+      if (field.dataDateRequired && !String(entry.dataDate || '').trim()) missing.push(`${field.label} - tanggal`);
+    });
+    const checklist = evidenceChecklist(kpi);
+    if (checklist.length > 0 && actualDataFields(kpi).length === 0) {
+      const checked = new Set(answer.checklist || []);
+      checklist.forEach((item) => {
+        if (!checked.has(item)) missing.push(item);
+      });
+    }
+    return {
+      complete: missing.length === 0,
+      missingCount: missing.length,
+    };
+  }
+
+  function progressSummary() {
+    const kpis = definition?.kpis || [];
+    const complete = kpis.filter((kpi) => kpiCompletion(kpi).complete).length;
+    return { total: kpis.length, complete, incomplete: kpis.length - complete };
+  }
 
   function updateAnswer(id, field, value) {
     setAnswers((current) => ({ ...current, [id]: { ...emptyAnswer(), ...current[id], [field]: value } }));
@@ -110,6 +152,7 @@ export default function SelfActualData({ currentUser, definitions, onSaved }) {
       return;
     }
     const missingEvidence = definition.kpis.find((kpi) => {
+      if (actualDataFields(kpi).length > 0) return false;
       const checklist = evidenceChecklist(kpi);
       if (checklist.length === 0) return false;
       const checked = new Set(answers[kpi.id]?.checklist || []);
@@ -147,7 +190,7 @@ export default function SelfActualData({ currentUser, definitions, onSaved }) {
   return <>
     <div className="card">
       <h3 className="card-title">Input Data Aktual Saya</h3>
-      <p className="card-subtitle">Data ini akan dikirim ke atasan untuk diverifikasi. Atasan akan menentukan skor final setelah data aktual dan evidence dinyatakan valid.</p>
+      <p className="card-subtitle">Data ini akan dikirim ke atasan untuk diverifikasi.</p>
       <label>Nama</label>
       <input type="text" value={currentUser?.nama || currentUser?.name || ''} disabled />
       <label>Posisi / Jabatan</label>
@@ -159,11 +202,18 @@ export default function SelfActualData({ currentUser, definitions, onSaved }) {
       {message && <div className="note-box">{message}</div>}
       {error && <div className="note-box note-error">{error}</div>}
       {!definition && <div className="empty-state">Template KPI untuk posisi Anda belum tersedia.</div>}
+      {definition && <div className="self-progress-summary">
+        <span><small>Total KPI</small><strong>{progressSummary().total}</strong></span>
+        <span><small>Lengkap</small><strong>{progressSummary().complete}</strong></span>
+        <span><small>Belum Lengkap</small><strong>{progressSummary().incomplete}</strong></span>
+        <span><small>Periode</small><strong>{period}</strong></span>
+        <b>Progress input: {progressSummary().complete} dari {progressSummary().total} KPI lengkap</b>
+      </div>}
     </div>
 
     {definition && <div className="card">
       <h3 className="card-title">Form KPI - {currentUser?.nama || currentUser?.name}</h3>
-      {definition.kpis.map((kpi) => {
+      {definition.kpis.map((kpi, kpiIndex) => {
         const answer = { ...emptyAnswer(), ...answers[kpi.id] };
         const fields = actualDataFields(kpi);
         const sourceField = sourceFieldFor(kpi);
@@ -172,24 +222,42 @@ export default function SelfActualData({ currentUser, definitions, onSaved }) {
           : answer.actualValue;
         const previewTier = calculatedTier(kpi, syncedActualValue);
         const checklist = evidenceChecklist(kpi);
-        return <div className="kpi-block" key={kpi.id}>
-          <div className="kpi-head"><div className="kpi-title">{kpi.nama}</div><div className="kpi-bobot">Bobot {kpi.bobot}%</div></div>
+        const completion = kpiCompletion(kpi);
+        const expanded = expandedKpis.includes(kpiIndex);
+        return <div className={`kpi-block self-kpi-card ${expanded ? 'expanded' : ''}`} key={kpi.id}>
+          <button className="self-kpi-header" type="button" onClick={() => toggleKpi(kpiIndex)} aria-expanded={expanded}>
+            <span className="self-kpi-heading">
+              <strong>{kpi.nama}</strong>
+              <small>Bobot {kpi.bobot}%</small>
+            </span>
+            <span className={`self-status-badge ${completion.complete ? 'complete' : 'incomplete'}`}>{completion.complete ? 'Lengkap' : 'Belum Lengkap'}</span>
+            {!completion.complete && <span className="self-missing-copy">{completion.missingCount} field wajib belum diisi</span>}
+            <span className="self-actual-mini">{syncedActualValue === '' ? '-' : `${syncedActualValue} ${kpi.unit || ''}`}</span>
+          </button>
+          {expanded && <>
           <div className="kpi-target">Target: {kpi.target}</div>
           <div className="formula-list">{[...kpi.tiers].sort((a, b) => b.skor - a.skor).map((item) =>
             <span key={item.skor}><strong>Skor {item.skor}:</strong> {formatRule(item.rule, kpi.unit)}</span>)}
           </div>
-          <label>Nilai Aktual Utama ({kpi.unit})</label>
-          <input
-            type="number"
-            step="any"
-            value={syncedActualValue ?? ''}
-            readOnly={Boolean(sourceField)}
-            onChange={(event) => updateAnswer(kpi.id, 'actualValue', event.target.value === '' ? '' : Number(event.target.value))}
-          />
-          {sourceField && <div className="actual-value-source-note">Nilai aktual utama diambil dari field: {sourceField.label}</div>}
-          <div className={`formula-result ${previewTier ? 'matched' : ''}`}>
-            {syncedActualValue === undefined || syncedActualValue === '' ? 'Skor dihitung otomatis.' : previewTier ? <>Hasil formula: <strong>{previewTier.label}</strong> (skor {previewTier.skor})</> : 'Nilai belum masuk formula mana pun.'}
-          </div>
+          {sourceField ? <div className="actual-value-summary-card">
+            <div>
+              <small>Nilai Aktual Utama</small>
+              <strong>{syncedActualValue === '' ? 'Belum diisi' : `${syncedActualValue} ${kpi.unit || ''}`}</strong>
+              <span>Diambil dari: {sourceField.label}</span>
+            </div>
+            <b className={previewTier ? 'matched' : ''}>{syncedActualValue === '' ? `Belum diisi - lengkapi field ${sourceField.label} di Input Data Aktual.` : previewTier ? `Skor ${previewTier.skor}` : 'Belum masuk formula'}</b>
+          </div> : <>
+            <label>Nilai Aktual Utama ({kpi.unit})</label>
+            <input
+              type="number"
+              step="any"
+              value={syncedActualValue ?? ''}
+              onChange={(event) => updateAnswer(kpi.id, 'actualValue', event.target.value === '' ? '' : Number(event.target.value))}
+            />
+            <div className={`formula-result ${previewTier ? 'matched' : ''}`}>
+              {syncedActualValue === undefined || syncedActualValue === '' ? 'Skor dihitung otomatis.' : previewTier ? <>Hasil formula: <strong>{previewTier.label}</strong> (skor {previewTier.skor})</> : 'Nilai belum masuk formula mana pun.'}
+            </div>
+          </>}
 
           {fields.length > 0 && <div className="actual-data-panel">
             <div className="actual-data-title">C. Input Data Aktual</div>
@@ -207,7 +275,8 @@ export default function SelfActualData({ currentUser, definitions, onSaved }) {
                     {field.required && <span>Required</span>}
                   </div>
                   <div className="actual-data-entry-grid">
-                    <div className="actual-data-main-input">
+                    <div className="actual-data-main-input actual-data-field">
+                      <label>Nilai</label>
                       {field.type === 'textarea' ? <textarea rows="3" value={entry.valueText} onChange={(event) => updateActualData(kpi, field, 'valueText', event.target.value)} />
                         : field.type === 'boolean' ? <select value={entry.valueText} onChange={(event) => updateActualData(kpi, field, 'valueText', event.target.value)}>
                           <option value="">-- Pilih --</option>
@@ -222,41 +291,50 @@ export default function SelfActualData({ currentUser, definitions, onSaved }) {
                           />}
                       {field.unit && <span>{field.unit}</span>}
                     </div>
-                    <div>
-                      <label>Source Document {field.sourceRequired ? '*' : ''}</label>
+                    <div className="actual-data-field">
+                      <label>Sumber Dokumen / Bukti {field.sourceRequired ? '*' : ''}</label>
                       <input type="text" value={entry.sourceDocument} onChange={(event) => updateActualData(kpi, field, 'sourceDocument', event.target.value)} />
+                      <small>Isi link Google Drive, nama file, nomor dokumen, atau referensi dashboard.</small>
                     </div>
-                    <div>
-                      <label>Data Date {field.dataDateRequired ? '*' : ''}</label>
+                    <div className="actual-data-field">
+                      <label>Tanggal Data {field.dataDateRequired ? '*' : ''}</label>
                       <input type="date" value={entry.dataDate} onChange={(event) => updateActualData(kpi, field, 'dataDate', event.target.value)} />
                     </div>
-                    <div className="actual-data-note-field">
-                      <label>Submitted Note</label>
-                      <textarea rows="2" value={entry.submittedNote} onChange={(event) => updateActualData(kpi, field, 'submittedNote', event.target.value)} />
+                    <div className="actual-data-note-toggle">
+                      <button className="btn ghost small" type="button" onClick={() => setExpandedNotes((current) => ({ ...current, [noteKey(kpi.id, field.id)]: !current[noteKey(kpi.id, field.id)] }))}>
+                        {entry.submittedNote || expandedNotes[noteKey(kpi.id, field.id)] ? 'Catatan terisi' : '+ Tambah Catatan'}
+                      </button>
                     </div>
+                    {(entry.submittedNote || expandedNotes[noteKey(kpi.id, field.id)]) && <div className="actual-data-note-field">
+                      <label>Catatan Tambahan</label>
+                      <textarea rows="2" value={entry.submittedNote} onChange={(event) => updateActualData(kpi, field, 'submittedNote', event.target.value)} />
+                    </div>}
                   </div>
                 </div>;
               })}
             </div>
           </div>}
 
-          <div className="evidence-panel">
-            <div className="evidence-title">D. Evidence Checklist</div>
-            <label>Link Bukti</label>
-            <input type="url" value={answer.link || ''} onChange={(event) => updateAnswer(kpi.id, 'link', event.target.value)} />
-            {checklist.length > 0 ? checklist.map((item) => <label className="checkbox-row evidence-check-row" key={item}>
+          {fields.length === 0 && checklist.length === 0 && <label>Link Bukti</label>}
+          {fields.length === 0 && checklist.length === 0 && <input type="url" value={answer.link || ''} onChange={(event) => updateAnswer(kpi.id, 'link', event.target.value)} />}
+          {checklist.length > 0 && <div className="evidence-panel secondary-evidence-panel">
+            <div className="evidence-title">Dokumen Tambahan</div>
+            {fields.length === 0 && <label>Link Bukti</label>}
+            {fields.length === 0 && <input type="url" value={answer.link || ''} onChange={(event) => updateAnswer(kpi.id, 'link', event.target.value)} />}
+            {checklist.map((item) => <label className="checkbox-row evidence-check-row" key={item}>
               <input
                 type="checkbox"
                 checked={(answer.checklist || []).includes(item)}
                 onChange={(event) => toggleChecklist(kpi.id, item, event.target.checked)}
               />
               <span>{item}</span>
-            </label>) : <div className="evidence-empty">Tidak ada evidence checklist untuk KPI ini.</div>}
+            </label>)}
             <label>Catatan Bukti</label>
             <textarea rows="3" value={answer.notes || ''} onChange={(event) => updateAnswer(kpi.id, 'notes', event.target.value)} />
-          </div>
+          </div>}
           <label>Catatan Pencapaian</label>
           <textarea rows="3" value={answer.achievementNote || ''} onChange={(event) => updateAnswer(kpi.id, 'achievementNote', event.target.value)} />
+          </>}
         </div>;
       })}
     </div>}

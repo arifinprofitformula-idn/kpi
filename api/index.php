@@ -466,6 +466,12 @@ function handleSubmit(array $payload, bool $selfSubmission = false): void
             array_map(fn ($item) => trim((string) $item), $kpi['evidenceChecklist']),
             fn ($item) => $item !== ''
         )) : [];
+        $hasActualDataSourceEvidence = $selfSubmission
+            && $actualDataFields !== []
+            && array_filter($actualDataFields, fn ($field) => (bool) ($field['sourceRequired'] ?? false)) !== [];
+        if ($hasActualDataSourceEvidence) {
+            $requiredChecklist = [];
+        }
         $submittedChecklist = is_array($draftAnswer['checklist'] ?? null)
             ? array_values(array_filter(
                 array_map(fn ($item) => trim((string) $item), $draftAnswer['checklist']),
