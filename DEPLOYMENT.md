@@ -260,6 +260,13 @@ Di cPanel **Git Version Control**:
 
 Backup database sebelum perubahan besar.
 
+## Phase 4 Actual Data Deployment
+
+Untuk deployment fitur **Input Data Aktual** dan verifikasi actual data, gunakan
+runbook khusus di [DEPLOYMENT_PHASE4_ACTUAL_DATA.md](DEPLOYMENT_PHASE4_ACTUAL_DATA.md).
+Runbook tersebut mencakup backup, build React, migrasi manual saat
+`KPI_ALLOW_SCHEMA_MIGRATIONS=0`, schema check, smoke test, dan rollback.
+
 ## Troubleshooting
 
 ### Halaman putih atau asset 404
