@@ -1,5 +1,15 @@
 import { useState } from 'react';
 import { api } from '../lib/api.js';
+import {
+  BRAND_EXECUTIVE_MEEZAN_GOLD_ACTUAL_DATA_PRESET,
+  BRAND_EXECUTIVE_SILVERGRAM_ACTUAL_DATA_PRESET,
+  STAFF_MARCOM_CRM_DATABASE_ACTUAL_DATA_PRESET,
+  STAFF_MARCOM_DESIGN_WEB_ACTUAL_DATA_PRESET,
+  STAFF_MARCOM_PHOTO_VIDEO_PRODUCTION_ACTUAL_DATA_PRESET,
+  STAFF_MARCOM_SOCIAL_MEDIA_ACTUAL_DATA_PRESET,
+  STAFF_MARKOM_DESIGNER_VIDEO_ACTUAL_DATA_PRESET,
+  applyActualDataPresetToDefinitions,
+} from '../lib/actualDataPresets.js';
 import { OPERATORS, actualDataFields, clone, evidenceChecklist, formatRule, newKpi } from '../lib/kpi.js';
 
 const UNIT_OPTIONS = ['%', 'Rp', 'Unit', 'Gram', 'Hari', 'Aktivitas', 'Dokumen'];
@@ -422,6 +432,83 @@ export default function KpiSettings({ definitions, onSaved }) {
     setConfirmation(null);
   }
 
+  function applyBrandExecutiveMeezanPreset() {
+    const { definitions: next, result } = applyActualDataPresetToDefinitions(
+      draft,
+      selectedPosition,
+      BRAND_EXECUTIVE_MEEZAN_GOLD_ACTUAL_DATA_PRESET,
+    );
+    setDraft(next);
+    setConfirmation(null);
+    alert(`Preset Brand Executive Meezan Gold berhasil diterapkan ke ${result.matchedCount} KPI. Review lalu klik Simpan Pengaturan.`);
+  }
+
+  function applyBrandExecutiveSilvergramPreset() {
+    const { definitions: next, result } = applyActualDataPresetToDefinitions(
+      draft,
+      selectedPosition,
+      BRAND_EXECUTIVE_SILVERGRAM_ACTUAL_DATA_PRESET,
+    );
+    setDraft(next);
+    setConfirmation(null);
+    alert(`Preset Brand Executive Silvergram berhasil diterapkan ke ${result.matchedCount} KPI. Review lalu klik Simpan Pengaturan.`);
+  }
+
+  function applyStaffMarcomCrmDatabasePreset() {
+    const { definitions: next, result } = applyActualDataPresetToDefinitions(
+      draft,
+      selectedPosition,
+      STAFF_MARCOM_CRM_DATABASE_ACTUAL_DATA_PRESET,
+    );
+    setDraft(next);
+    setConfirmation(null);
+    alert(`Preset Staff Marcom CRM & Database berhasil diterapkan ke ${result.matchedCount} KPI. Review lalu klik Simpan Pengaturan.`);
+  }
+
+  function applyStaffMarcomDesignWebPreset() {
+    const { definitions: next, result } = applyActualDataPresetToDefinitions(
+      draft,
+      selectedPosition,
+      STAFF_MARCOM_DESIGN_WEB_ACTUAL_DATA_PRESET,
+    );
+    setDraft(next);
+    setConfirmation(null);
+    alert(`Preset Staff Marcom Design & Web berhasil diterapkan ke ${result.matchedCount} KPI. Review lalu klik Simpan Pengaturan.`);
+  }
+
+  function applyStaffMarcomSocialMediaPreset() {
+    const { definitions: next, result } = applyActualDataPresetToDefinitions(
+      draft,
+      selectedPosition,
+      STAFF_MARCOM_SOCIAL_MEDIA_ACTUAL_DATA_PRESET,
+    );
+    setDraft(next);
+    setConfirmation(null);
+    alert(`Preset Staff Marcom Social Media berhasil diterapkan ke ${result.matchedCount} KPI. Review lalu klik Simpan Pengaturan.`);
+  }
+
+  function applyStaffMarcomPhotoVideoProductionPreset() {
+    const { definitions: next, result } = applyActualDataPresetToDefinitions(
+      draft,
+      selectedPosition,
+      STAFF_MARCOM_PHOTO_VIDEO_PRODUCTION_ACTUAL_DATA_PRESET,
+    );
+    setDraft(next);
+    setConfirmation(null);
+    alert(`Preset Staff Marcom Photo & Video Production berhasil diterapkan ke ${result.matchedCount} KPI. Review lalu klik Simpan Pengaturan.`);
+  }
+
+  function applyStaffMarkomDesignerVideoPreset() {
+    const { definitions: next, result } = applyActualDataPresetToDefinitions(
+      draft,
+      selectedPosition,
+      STAFF_MARKOM_DESIGNER_VIDEO_ACTUAL_DATA_PRESET,
+    );
+    setDraft(next);
+    setConfirmation(null);
+    alert(`Preset Staff Markom Designer & Video berhasil diterapkan ke ${result.matchedCount} KPI. Review lalu klik Simpan Pengaturan.`);
+  }
+
   function addEvidenceItem(kpiIndex) {
     setDraft((current) => {
       const next = clone(current);
@@ -571,6 +658,13 @@ export default function KpiSettings({ definitions, onSaved }) {
         </select>
       </div>
       <div className="builder-toolbar-actions">
+        <button className="btn secondary" onClick={() => setConfirmation({ type: 'staffMarkomDesignerVideoPreset' })} disabled={!definition}>Terapkan Preset Staff Markom Designer & Video</button>
+        <button className="btn secondary" onClick={() => setConfirmation({ type: 'staffMarcomPhotoVideoProductionPreset' })} disabled={!definition}>Terapkan Preset Staff Marcom Photo & Video Production</button>
+        <button className="btn secondary" onClick={() => setConfirmation({ type: 'staffMarcomSocialMediaPreset' })} disabled={!definition}>Terapkan Preset Staff Marcom Social Media</button>
+        <button className="btn secondary" onClick={() => setConfirmation({ type: 'staffMarcomDesignWebPreset' })} disabled={!definition}>Terapkan Preset Staff Marcom Design & Web</button>
+        <button className="btn secondary" onClick={() => setConfirmation({ type: 'staffMarcomCrmDatabasePreset' })} disabled={!definition}>Terapkan Preset Staff Marcom CRM & Database</button>
+        <button className="btn secondary" onClick={() => setConfirmation({ type: 'brandExecutiveSilvergramPreset' })} disabled={!definition}>Terapkan Preset Brand Executive Silvergram</button>
+        <button className="btn secondary" onClick={() => setConfirmation({ type: 'brandExecutiveMeezanPreset' })} disabled={!definition}>Terapkan Preset Brand Executive Meezan Gold</button>
         <button className="btn secondary" onClick={() => setConfirmation({ type: 'markomPreset' })} disabled={!definition}>Terapkan Preset Input Data Aktual Markom Leader</button>
         <button className="btn secondary" onClick={addPosition}>+ Tambah Posisi</button>
         <button className="btn" onClick={addKpi} disabled={!definition}>+ Tambah KPI</button>
@@ -850,6 +944,55 @@ export default function KpiSettings({ definitions, onSaved }) {
       confirmLabel="Terapkan Preset"
       onCancel={() => setConfirmation(null)}
       onConfirm={applyMarkomActualDataPreset}
+    />}
+    {confirmation?.type === 'brandExecutiveMeezanPreset' && <ConfirmModal
+      title="Terapkan Preset Brand Executive Meezan Gold?"
+      description={`${selectedPosition.toLowerCase().includes('brand executive meezan gold') ? '' : 'Posisi yang dipilih bukan Brand Executive Meezan Gold. Tetap terapkan preset ke posisi ini? '}Preset ini akan mengisi Input Data Aktual KPI Brand Executive Meezan Gold berdasarkan dokumen evidence. Field dengan ID yang sama akan diperbarui, field lain tetap dipertahankan. Pengaturan belum tersimpan sampai Anda klik Simpan Pengaturan.`}
+      confirmLabel="Terapkan Preset"
+      onCancel={() => setConfirmation(null)}
+      onConfirm={applyBrandExecutiveMeezanPreset}
+    />}
+    {confirmation?.type === 'brandExecutiveSilvergramPreset' && <ConfirmModal
+      title="Terapkan Preset Brand Executive Silvergram?"
+      description={`${selectedPosition.toLowerCase().includes('brand executive silvergram') ? '' : 'Posisi yang dipilih bukan Brand Executive Silvergram. Tetap terapkan preset ke posisi ini? '}Preset ini akan mengisi Input Data Aktual KPI Brand Executive Silvergram berdasarkan dokumen evidence. Field dengan ID yang sama akan diperbarui, field lain tetap dipertahankan. Pengaturan belum tersimpan sampai Anda klik Simpan Pengaturan.`}
+      confirmLabel="Terapkan Preset"
+      onCancel={() => setConfirmation(null)}
+      onConfirm={applyBrandExecutiveSilvergramPreset}
+    />}
+    {confirmation?.type === 'staffMarcomCrmDatabasePreset' && <ConfirmModal
+      title="Terapkan Preset Staff Marcom CRM & Database?"
+      description={`${/staff\s*mar(?:c|k)om|crm|database/i.test(selectedPosition) ? '' : 'Posisi yang dipilih bukan Staff Marcom CRM & Database. Tetap terapkan preset ke posisi ini? '}Preset ini akan mengisi Input Data Aktual KPI Staff Marcom CRM & Database berdasarkan dokumen evidence. Field dengan ID yang sama akan diperbarui, field lain tetap dipertahankan. Pengaturan belum tersimpan sampai Anda klik Simpan Pengaturan.`}
+      confirmLabel="Terapkan Preset"
+      onCancel={() => setConfirmation(null)}
+      onConfirm={applyStaffMarcomCrmDatabasePreset}
+    />}
+    {confirmation?.type === 'staffMarcomDesignWebPreset' && <ConfirmModal
+      title="Terapkan Preset Staff Marcom Design & Web?"
+      description={`${/staff\s*mar(?:c|k)om|design|web/i.test(selectedPosition) ? '' : 'Posisi yang dipilih bukan Staff Marcom Design & Web. Tetap terapkan preset ke posisi ini? '}Preset ini akan mengisi Input Data Aktual KPI Staff Marcom Design & Web berdasarkan dokumen evidence. Field dengan ID yang sama akan diperbarui, field lain tetap dipertahankan. Pengaturan belum tersimpan sampai Anda klik Simpan Pengaturan.`}
+      confirmLabel="Terapkan Preset"
+      onCancel={() => setConfirmation(null)}
+      onConfirm={applyStaffMarcomDesignWebPreset}
+    />}
+    {confirmation?.type === 'staffMarcomSocialMediaPreset' && <ConfirmModal
+      title="Terapkan Preset Staff Marcom Social Media?"
+      description={`${/staff\s*mar(?:c|k)om|social media|designer|video|visual/i.test(selectedPosition) ? '' : 'Posisi yang dipilih bukan Staff Marcom Social Media. Tetap terapkan preset ke posisi ini? '}Preset ini akan mengisi Input Data Aktual KPI Staff Marcom Social Media berdasarkan dokumen evidence. Field dengan ID yang sama akan diperbarui, field lain tetap dipertahankan. Pengaturan belum tersimpan sampai Anda klik Simpan Pengaturan.`}
+      confirmLabel="Terapkan Preset"
+      onCancel={() => setConfirmation(null)}
+      onConfirm={applyStaffMarcomSocialMediaPreset}
+    />}
+    {confirmation?.type === 'staffMarcomPhotoVideoProductionPreset' && <ConfirmModal
+      title="Terapkan Preset Staff Marcom Photo & Video Production?"
+      description={`${/staff\s*mar(?:c|k)om|photo|foto|video|production/i.test(selectedPosition) ? '' : 'Posisi yang dipilih bukan Staff Marcom Photo & Video Production. Tetap terapkan preset ke posisi ini? '}Preset ini akan mengisi Input Data Aktual KPI Staff Marcom Photo & Video Production berdasarkan dokumen evidence. Field dengan ID yang sama akan diperbarui, field lain tetap dipertahankan. Pengaturan belum tersimpan sampai Anda klik Simpan Pengaturan.`}
+      confirmLabel="Terapkan Preset"
+      onCancel={() => setConfirmation(null)}
+      onConfirm={applyStaffMarcomPhotoVideoProductionPreset}
+    />}
+    {confirmation?.type === 'staffMarkomDesignerVideoPreset' && <ConfirmModal
+      title="Terapkan Preset Staff Markom Designer & Video?"
+      description={`${/staff\s*mar(?:c|k)om|designer|video|visual|social media/i.test(selectedPosition) ? '' : 'Posisi yang dipilih bukan Staff Markom Designer & Video. Tetap terapkan preset ke posisi ini? '}Preset ini akan mengisi Input Data Aktual KPI Staff Markom Designer & Video berdasarkan dokumen evidence Locky. Field dengan ID yang sama akan diperbarui, field lain tetap dipertahankan. Pengaturan belum tersimpan sampai Anda klik Simpan Pengaturan.`}
+      confirmLabel="Terapkan Preset"
+      onCancel={() => setConfirmation(null)}
+      onConfirm={applyStaffMarkomDesignerVideoPreset}
     />}
   </div>;
 }

@@ -362,6 +362,45 @@ const POSISI_DATA = [
             ]],
         ],
     ],
+    'Staff Markom - Designer & Video' => [
+        'kpis' => [
+            ['id' => 'k1', 'nama' => 'Ketepatan Waktu Produksi Design', 'bobot' => 25, 'target' => 'SLA: Simple ≤1 hr | Campaign ≤2 hr | Video ≤3 hr (≥95% on-time)', 'tiers' => [
+                ['label' => 'Capaian ≥95% task selesai sesuai SLA', 'skor' => 2],
+                ['label' => 'Capaian 85%–94%', 'skor' => 1],
+                ['label' => 'Capaian <85%', 'skor' => 0],
+            ]],
+            ['id' => 'k2', 'nama' => 'Support Visual Campaign Marketing', 'bobot' => 20, 'target' => '100% permintaan design campaign terpenuhi (≥95% = Mutu 2)', 'tiers' => [
+                ['label' => 'Capaian ≥95% design campaign terpenuhi', 'skor' => 2],
+                ['label' => 'Capaian 85%–94%', 'skor' => 1],
+                ['label' => 'Capaian <85%', 'skor' => 0],
+            ]],
+            ['id' => 'k3', 'nama' => 'Kualitas & Konsistensi Brand Visual', 'bobot' => 15, 'target' => '≥90% design lolos tanpa revisi mayor (brand consistency)', 'tiers' => [
+                ['label' => 'Capaian ≥90% tanpa revisi mayor', 'skor' => 2],
+                ['label' => 'Capaian 80%–89%', 'skor' => 1],
+                ['label' => 'Capaian <80%', 'skor' => 0],
+            ]],
+            ['id' => 'k4', 'nama' => 'Produktivitas Asset Visual', 'bobot' => 15, 'target' => '≥125 design/bulan (≥100% target = Mutu 2)', 'tiers' => [
+                ['label' => 'Capaian ≥100% target', 'skor' => 2],
+                ['label' => 'Capaian 80%–99%', 'skor' => 1],
+                ['label' => 'Capaian <80%', 'skor' => 0],
+            ]],
+            ['id' => 'k5', 'nama' => 'Editing Video & Media Support', 'bobot' => 10, 'target' => '≥25 video clipper/bulan (≥100% target = Mutu 2)', 'tiers' => [
+                ['label' => 'Capaian ≥100% target', 'skor' => 2],
+                ['label' => 'Capaian 80%–99%', 'skor' => 1],
+                ['label' => 'Capaian <80%', 'skor' => 0],
+            ]],
+            ['id' => 'k6', 'nama' => 'Riset Visual Kompetitor', 'bobot' => 10, 'target' => '≥4 insight visual usable per bulan', 'tiers' => [
+                ['label' => 'Capaian ≥4 insight usable', 'skor' => 2],
+                ['label' => 'Capaian 2–3 insight usable', 'skor' => 1],
+                ['label' => 'Capaian <2 insight usable', 'skor' => 0],
+            ]],
+            ['id' => 'k7', 'nama' => 'Manajemen Asset Branding', 'bobot' => 5, 'target' => '≥95% file aset tertata sesuai standar folder & penamaan', 'tiers' => [
+                ['label' => 'Capaian ≥95% aset tertata sesuai standar', 'skor' => 2],
+                ['label' => 'Capaian 85%–94%', 'skor' => 1],
+                ['label' => 'Capaian <85%', 'skor' => 0],
+            ]],
+        ],
+    ],
     'Staff Marcom - Photo & Video Production' => [
         'kpis' => [
             ['id' => 'k1', 'nama' => 'Ketepatan Waktu Produksi Foto & Video', 'bobot' => 25, 'target' => 'SLA: Foto produk 1 hr, Reel 1 hr, Video campaign 2 hr, Recap event 2 hr, Dok. mentah H+1', 'tiers' => [

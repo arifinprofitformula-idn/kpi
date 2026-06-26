@@ -501,6 +501,11 @@ function getKpiDefinitions(): array
     if (!is_array($definitions) || $definitions === []) {
         $definitions = POSISI_DATA;
     }
+    foreach (POSISI_DATA as $positionName => $defaultDefinition) {
+        if (!isset($definitions[$positionName])) {
+            $definitions[$positionName] = $defaultDefinition;
+        }
+    }
 
     $versionStmt = $pdo->prepare('SELECT setting_value FROM app_settings WHERE setting_key = ? LIMIT 1');
     $versionStmt->execute(['kpi_formula_version']);

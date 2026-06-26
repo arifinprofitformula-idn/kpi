@@ -23,9 +23,10 @@ The release is backward compatible with old KPI definitions and old submissions.
 - Approval is blocked until required actual data and required evidence are
   verified.
 
-## Evaluator Changes
+## Assessed User Changes
 
-- Evaluators fill Section C `Input Data Aktual` when configured for a KPI.
+- The assessed user fills Section C `Input Data Aktual Saya` when configured for
+  a KPI.
 - Required actual-data values, source document, and data date are validated.
 - If a KPI uses `actualValueSourceFieldId`, the main actual value is sourced
   from that actual-data field.
@@ -68,6 +69,123 @@ The migration is additive and repeatable. It does not drop or truncate tables.
   - CLI-only schema readiness check.
   - Prints `PASS` or `FAIL` per required table, column, and foreign key.
   - Does not modify data.
+
+## Preset Input Data Aktual Brand Executive Meezan Gold
+
+Admin can populate the Brand Executive Meezan Gold actual-data fields without
+manual one-by-one setup:
+
+1. Open `Pengaturan Form KPI`.
+2. Select `Brand Executive Meezan Gold`.
+3. Click `Terapkan Preset Brand Executive Meezan Gold`.
+4. Review the generated actual-data fields per KPI.
+5. Click `Simpan Pengaturan`.
+
+The preset only merges `actualDataFields` and `actualValueSourceFieldId`. It
+preserves KPI names, targets, weights, scoring tiers, and existing evidence
+requirements.
+
+## Preset Input Data Aktual Brand Executive Silvergram
+
+Admin can populate the Brand Executive Silvergram actual-data fields without
+manual one-by-one setup:
+
+1. Open `Pengaturan Form KPI`.
+2. Select `Brand Executive Silvergram`.
+3. Click `Terapkan Preset Brand Executive Silvergram`.
+4. Review the generated actual-data fields for KPI1 to KPI7.
+5. Click `Simpan Pengaturan`.
+
+The preset only merges `actualDataFields` and `actualValueSourceFieldId`. It
+preserves KPI names, targets, weights, scoring tiers, and existing evidence
+requirements. Existing actual-data fields with the same ID are updated, while
+unrelated custom fields remain in place.
+
+## Preset Input Data Aktual Staff Marcom CRM & Database
+
+Admin can populate the Staff Marcom CRM & Database actual-data fields without
+manual one-by-one setup:
+
+1. Open `Pengaturan Form KPI`.
+2. Select `Staff Marcom - CRM & Database`, `Staff Markom`, or the relevant CRM
+   staff position alias.
+3. Click `Terapkan Preset Staff Marcom CRM & Database`.
+4. Review the generated actual-data fields for KPI1 to KPI7.
+5. Click `Simpan Pengaturan`.
+
+The preset only merges `actualDataFields` and `actualValueSourceFieldId`. It
+preserves KPI names, targets, weights, scoring tiers, and existing evidence
+requirements. Existing actual-data fields with the same ID are updated, while
+unrelated custom fields remain in place.
+
+## Preset Input Data Aktual Staff Marcom Design & Web
+
+Admin can populate the Staff Marcom Design & Web actual-data fields without
+manual one-by-one setup:
+
+1. Open `Pengaturan Form KPI`.
+2. Select `Staff Marcom - Design & Web`, `Staff Markom Designer & Web
+   Developer`, or the relevant design/web staff position alias.
+3. Click `Terapkan Preset Staff Marcom Design & Web`.
+4. Review the generated actual-data fields for KPI1 to KPI7.
+5. Click `Simpan Pengaturan`.
+
+The preset only merges `actualDataFields` and `actualValueSourceFieldId`. It
+preserves KPI names, targets, weights, scoring tiers, and existing evidence
+requirements. Existing actual-data fields with the same ID are updated, while
+unrelated custom fields remain in place.
+
+## Preset Input Data Aktual Staff Marcom Social Media
+
+Admin can populate the Staff Marcom Social Media actual-data fields without
+manual one-by-one setup:
+
+1. Open `Pengaturan Form KPI`.
+2. Select `Staff Marcom - Social Media`, `Staff Markom Designer & Video`, or
+   the relevant visual content staff position alias.
+3. Click `Terapkan Preset Staff Marcom Social Media`.
+4. Review the generated actual-data fields for KPI1 to KPI7.
+5. Click `Simpan Pengaturan`.
+
+The preset only merges `actualDataFields` and `actualValueSourceFieldId`. It
+preserves KPI names, targets, weights, scoring tiers, and existing evidence
+requirements. Existing actual-data fields with the same ID are updated, while
+unrelated custom fields remain in place.
+
+## Posisi Staff Markom Designer & Video
+
+The default KPI definitions include `Staff Markom - Designer & Video`, based on
+`KPI_Evidence_Document_StaffMarkom_Locky.xlsx`.
+
+Admin can populate its actual-data fields without manual one-by-one setup:
+
+1. Open `Pengaturan Form KPI`.
+2. Select `Staff Markom - Designer & Video`.
+3. Click `Terapkan Preset Staff Markom Designer & Video`.
+4. Review the generated actual-data fields for KPI1 to KPI7.
+5. Click `Simpan Pengaturan`.
+
+The preset follows the Locky evidence workbook: the assessed user fills Section
+C actual data, each actual-data row uses `Sumber Dokumen / Bukti` as primary
+evidence, and the superior verifies data before final scoring. Existing saved
+positions are not overwritten.
+
+## Preset Input Data Aktual Staff Marcom Photo & Video Production
+
+Admin can populate the Staff Marcom Photo & Video Production actual-data fields
+without manual one-by-one setup:
+
+1. Open `Pengaturan Form KPI`.
+2. Select `Staff Marcom - Photo & Video Production`, `Staff Markom Foto &
+   Video`, or the relevant content production staff position alias.
+3. Click `Terapkan Preset Staff Marcom Photo & Video Production`.
+4. Review the generated actual-data fields for KPI1 to KPI7.
+5. Click `Simpan Pengaturan`.
+
+The preset only merges `actualDataFields` and `actualValueSourceFieldId`. It
+preserves KPI names, targets, weights, scoring tiers, and existing evidence
+requirements. Existing actual-data fields with the same ID are updated, while
+unrelated custom fields remain in place.
 
 ## Deployment Steps Summary
 
