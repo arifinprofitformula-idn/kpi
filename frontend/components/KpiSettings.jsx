@@ -6,11 +6,54 @@ const UNIT_OPTIONS = ['%', 'Rp', 'Unit', 'Gram', 'Hari', 'Aktivitas', 'Dokumen']
 const CUSTOM_UNIT = '__custom__';
 const ACTUAL_DATA_TYPES = {
   number: 'Angka',
-  text: 'Teks',
-  date: 'Tanggal',
   percent: 'Persen',
   currency: 'Nominal',
+  text: 'Teks',
+  textarea: 'Teks Panjang',
+  date: 'Tanggal',
+  url: 'URL',
+  boolean: 'Ya/Tidak',
 };
+const ACTUAL_DATA_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+
+function newActualDataField(id = 'actual_data_1') {
+  return {
+    id,
+    label: 'Data Aktual Baru',
+    type: 'number',
+    unit: '',
+    required: true,
+    sourceRequired: true,
+    dataDateRequired: true,
+    verificationRequired: true,
+    usedAsActualValue: false,
+    helperText: '',
+  };
+}
+
+function actualDataFieldIssues(kpi) {
+  const fields = Array.isArray(kpi.actualDataFields) ? kpi.actualDataFields : [];
+  const counts = fields.reduce((acc, field) => {
+    const id = String(field.id || '').trim();
+    if (id) acc[id] = (acc[id] || 0) + 1;
+    return acc;
+  }, {});
+  const usedCount = fields.filter((field) => field.usedAsActualValue).length;
+
+  return fields.map((field) => {
+    const id = String(field.id || '').trim();
+    const issues = [];
+    if (!id) issues.push('Field ID wajib diisi.');
+    else if (!ACTUAL_DATA_ID_PATTERN.test(id)) issues.push('Field ID hanya boleh huruf, angka, underscore, atau dash.');
+    else if (counts[id] > 1) issues.push('Field ID duplikat dalam KPI ini.');
+    if (!String(field.label || '').trim()) issues.push('Label Field wajib diisi.');
+    if (!ACTUAL_DATA_TYPES[field.type || 'text']) issues.push('Type tidak valid.');
+    if (String(field.unit || '').length > 64) issues.push('Unit maksimal 64 karakter.');
+    if (String(field.helperText || '').length > 500) issues.push('Helper Text maksimal 500 karakter.');
+    if (usedCount > 1 && field.usedAsActualValue) issues.push('Hanya satu field boleh dipakai sebagai Nilai Aktual.');
+    return issues;
+  });
+}
 
 function kpiIsComplete(kpi) {
   return Boolean(
@@ -19,12 +62,7 @@ function kpiIsComplete(kpi) {
     && Number(kpi.bobot) > 0
     && kpi.unit?.trim()
     && kpi.target?.trim()
-    && (!kpi.actualDataFields || kpi.actualDataFields.every((field) => (
-      field.id?.trim()
-      && /^[A-Za-z0-9_-]{1,64}$/.test(field.id)
-      && field.label?.trim()
-      && ACTUAL_DATA_TYPES[field.type || 'text']
-    )))
+    && actualDataFieldIssues(kpi).every((issues) => issues.length === 0)
     && (!kpi.evidenceChecklist || kpi.evidenceChecklist.every((item) => String(item || '').trim()))
     && kpi.tiers?.length
     && kpi.tiers.every((tier) => (
@@ -132,8 +170,21 @@ export default function KpiSettings({ definitions, onSaved }) {
   function updateActualDataField(kpiIndex, fieldIndex, key, value) {
     setDraft((current) => {
       const next = clone(current);
-      next[selectedPosition].kpis[kpiIndex].actualDataFields ??= [];
-      next[selectedPosition].kpis[kpiIndex].actualDataFields[fieldIndex][key] = value;
+      const kpi = next[selectedPosition].kpis[kpiIndex];
+      const fields = kpi.actualDataFields ??= [];
+      const field = fields[fieldIndex];
+      if (!field) return next;
+      if (key === 'usedAsActualValue') {
+        fields.forEach((item, index) => {
+          item.usedAsActualValue = value && index === fieldIndex;
+        });
+        kpi.actualValueSourceFieldId = value ? field.id : '';
+      } else {
+        field[key] = value;
+        if (key === 'id' && field.usedAsActualValue) {
+          kpi.actualValueSourceFieldId = value;
+        }
+      }
       return next;
     });
   }
@@ -143,9 +194,36 @@ export default function KpiSettings({ definitions, onSaved }) {
       const next = clone(current);
       const fields = next[selectedPosition].kpis[kpiIndex].actualDataFields ??= [];
       let sequence = fields.length + 1;
-      let id = `data_${sequence}`;
-      while (fields.some((field) => field.id === id)) id = `data_${++sequence}`;
-      fields.push({ id, label: '', type: 'number', unit: '', required: true });
+      let id = `actual_data_${sequence}`;
+      while (fields.some((field) => field.id === id)) id = `actual_data_${++sequence}`;
+      fields.push(newActualDataField(id));
+      return next;
+    });
+  }
+
+  function duplicateActualDataField(kpiIndex, fieldIndex) {
+    setDraft((current) => {
+      const next = clone(current);
+      const kpi = next[selectedPosition].kpis[kpiIndex];
+      const fields = kpi.actualDataFields ??= [];
+      const source = fields[fieldIndex];
+      if (!source) return next;
+      let sequence = fields.length + 1;
+      let id = `${source.id || 'actual_data'}_copy`;
+      while (fields.some((field) => field.id === id)) id = `actual_data_${++sequence}`;
+      fields.splice(fieldIndex + 1, 0, { ...clone(source), id, usedAsActualValue: false });
+      return next;
+    });
+  }
+
+  function moveActualDataField(kpiIndex, fieldIndex, direction) {
+    setDraft((current) => {
+      const next = clone(current);
+      const fields = next[selectedPosition].kpis[kpiIndex].actualDataFields ?? [];
+      const targetIndex = fieldIndex + direction;
+      if (targetIndex < 0 || targetIndex >= fields.length) return next;
+      const [field] = fields.splice(fieldIndex, 1);
+      fields.splice(targetIndex, 0, field);
       return next;
     });
   }
@@ -153,8 +231,11 @@ export default function KpiSettings({ definitions, onSaved }) {
   function removeActualDataField(kpiIndex, fieldIndex) {
     setDraft((current) => {
       const next = clone(current);
-      next[selectedPosition].kpis[kpiIndex].actualDataFields = (next[selectedPosition].kpis[kpiIndex].actualDataFields || [])
+      const kpi = next[selectedPosition].kpis[kpiIndex];
+      const removed = kpi.actualDataFields?.[fieldIndex];
+      kpi.actualDataFields = (kpi.actualDataFields || [])
         .filter((_, index) => index !== fieldIndex);
+      if (removed?.usedAsActualValue) kpi.actualValueSourceFieldId = '';
       return next;
     });
   }
@@ -333,6 +414,7 @@ export default function KpiSettings({ definitions, onSaved }) {
           const expanded = expandedKpi === kpiIndex;
           const checklist = kpi.evidenceChecklist || [];
           const dataFields = kpi.actualDataFields || [];
+          const dataFieldIssues = actualDataFieldIssues(kpi);
           return <article className={`kpi-accordion-card ${expanded ? 'expanded' : ''}`} key={`${kpi.id}-${kpiIndex}`}>
             <div className="kpi-accordion-summary">
               <button className="accordion-toggle" onClick={() => setExpandedKpi(expanded ? null : kpiIndex)} aria-expanded={expanded}>
@@ -392,47 +474,92 @@ export default function KpiSettings({ definitions, onSaved }) {
                 <div className="scoring-section-heading">
                   <div>
                     <h4>Input Data Aktual</h4>
-                    <p>Baris pendukung yang diisi oleh penilai sebelum evidence diverifikasi.</p>
+                    <p>Atur field data aktual yang wajib diisi sebelum evidence dan keputusan skor final.</p>
                   </div>
-                  <button className="btn secondary small" type="button" onClick={() => addActualDataField(kpiIndex)}>+ Tambah Field</button>
+                  <button className="btn secondary small" type="button" onClick={() => addActualDataField(kpiIndex)}>+ Tambah Actual Data Field</button>
                 </div>
                 <div className="actual-data-settings-list">
-                  {dataFields.map((field, fieldIndex) => <div className="actual-data-settings-row" key={fieldIndex}>
-                    <input
-                      className="form-control"
-                      value={field.id}
-                      placeholder="id_field"
-                      onChange={(event) => updateActualDataField(kpiIndex, fieldIndex, 'id', event.target.value)}
-                    />
-                    <input
-                      className="form-control"
-                      value={field.label}
-                      placeholder="Contoh: Total leads"
-                      onChange={(event) => updateActualDataField(kpiIndex, fieldIndex, 'label', event.target.value)}
-                    />
-                    <select
-                      className="form-select"
-                      value={field.type || 'text'}
-                      onChange={(event) => updateActualDataField(kpiIndex, fieldIndex, 'type', event.target.value)}
-                    >
-                      {Object.entries(ACTUAL_DATA_TYPES).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
-                    </select>
-                    <input
-                      className="form-control"
-                      value={field.unit || ''}
-                      placeholder="Unit"
-                      onChange={(event) => updateActualDataField(kpiIndex, fieldIndex, 'unit', event.target.value)}
-                    />
-                    <label className="checkbox-row compact-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={field.required !== false}
-                        onChange={(event) => updateActualDataField(kpiIndex, fieldIndex, 'required', event.target.checked)}
-                      />
-                      <span>Wajib</span>
-                    </label>
-                    <button className="btn danger-outline small" type="button" onClick={() => removeActualDataField(kpiIndex, fieldIndex)}>Hapus</button>
-                  </div>)}
+                  {dataFields.map((field, fieldIndex) => {
+                    const issues = dataFieldIssues[fieldIndex] || [];
+                    return <div className={`actual-data-field-card ${issues.length ? 'has-warning' : ''}`} key={`${field.id || 'field'}-${fieldIndex}`}>
+                      <div className="actual-data-card-head">
+                        <strong>{field.label || `Field ${fieldIndex + 1}`}</strong>
+                        <div className="actual-data-card-actions">
+                          <button className="btn ghost small" type="button" onClick={() => moveActualDataField(kpiIndex, fieldIndex, -1)} disabled={fieldIndex === 0}>Naik</button>
+                          <button className="btn ghost small" type="button" onClick={() => moveActualDataField(kpiIndex, fieldIndex, 1)} disabled={fieldIndex === dataFields.length - 1}>Turun</button>
+                          <button className="btn secondary small" type="button" onClick={() => duplicateActualDataField(kpiIndex, fieldIndex)}>Duplikasi</button>
+                          <button className="btn danger-outline small" type="button" onClick={() => removeActualDataField(kpiIndex, fieldIndex)}>Hapus</button>
+                        </div>
+                      </div>
+                      <div className="actual-data-settings-grid">
+                        <div className="form-group">
+                          <label className="form-label">Field ID</label>
+                          <input
+                            className="form-control"
+                            value={field.id || ''}
+                            placeholder="actual_data_1"
+                            onChange={(event) => updateActualDataField(kpiIndex, fieldIndex, 'id', event.target.value)}
+                          />
+                        </div>
+                        <div className="form-group actual-data-label-field">
+                          <label className="form-label">Label Field</label>
+                          <input
+                            className="form-control"
+                            value={field.label || ''}
+                            placeholder="Contoh: Total leads"
+                            onChange={(event) => updateActualDataField(kpiIndex, fieldIndex, 'label', event.target.value)}
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Type</label>
+                          <select
+                            className="form-select"
+                            value={field.type || 'text'}
+                            onChange={(event) => updateActualDataField(kpiIndex, fieldIndex, 'type', event.target.value)}
+                          >
+                            {Object.keys(ACTUAL_DATA_TYPES).map((value) => <option value={value} key={value}>{value}</option>)}
+                          </select>
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Unit</label>
+                          <input
+                            className="form-control"
+                            value={field.unit || ''}
+                            placeholder="%, Rp, hari"
+                            onChange={(event) => updateActualDataField(kpiIndex, fieldIndex, 'unit', event.target.value)}
+                          />
+                        </div>
+                        <div className="form-group actual-data-helper-field">
+                          <label className="form-label">Helper Text</label>
+                          <input
+                            className="form-control"
+                            value={field.helperText || ''}
+                            placeholder="Petunjuk singkat untuk pengisi"
+                            onChange={(event) => updateActualDataField(kpiIndex, fieldIndex, 'helperText', event.target.value)}
+                          />
+                        </div>
+                      </div>
+                      <div className="actual-data-checkbox-grid">
+                        {[
+                          ['required', 'Required'],
+                          ['sourceRequired', 'Source Required'],
+                          ['dataDateRequired', 'Data Date Required'],
+                          ['verificationRequired', 'Verification Required'],
+                          ['usedAsActualValue', 'Used as Actual Value'],
+                        ].map(([key, label]) => <label className="checkbox-row compact-checkbox" key={key}>
+                          <input
+                            type="checkbox"
+                            checked={Boolean(field[key])}
+                            onChange={(event) => updateActualDataField(kpiIndex, fieldIndex, key, event.target.checked)}
+                          />
+                          <span>{label}</span>
+                        </label>)}
+                      </div>
+                      {issues.length > 0 && <div className="actual-data-warnings">
+                        {issues.map((issue) => <span key={issue}>{issue}</span>)}
+                      </div>}
+                    </div>;
+                  })}
                   {dataFields.length === 0 && <div className="evidence-empty">Belum ada field Input Data Aktual untuk KPI ini.</div>}
                 </div>
               </section>

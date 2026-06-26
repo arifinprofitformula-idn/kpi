@@ -3,6 +3,35 @@ import { api } from '../lib/api.js';
 import { MONTHS, actualDataFields, calculatedTier, defaultPeriod, evidenceChecklist, formatRule } from '../lib/kpi.js';
 
 const WORK_DAYS = Number(window.APP_CONFIG?.workDays || 26);
+const NUMERIC_ACTUAL_TYPES = ['number', 'percent', 'currency'];
+
+function emptyActualDataEntry() {
+  return {
+    valueText: '',
+    valueNumber: '',
+    valueDate: '',
+    sourceDocument: '',
+    dataDate: '',
+    submittedNote: '',
+  };
+}
+
+function actualDataValue(field, entry = {}) {
+  if (NUMERIC_ACTUAL_TYPES.includes(field.type)) return entry.valueNumber;
+  if (field.type === 'date') return entry.valueDate;
+  return entry.valueText;
+}
+
+function actualDataIsFilled(field, entry = {}) {
+  const value = actualDataValue(field, entry);
+  if (field.type === 'boolean') return value === '1' || value === '0' || value === true || value === false;
+  return value !== undefined && value !== null && String(value).trim() !== '';
+}
+
+function sourceFieldFor(kpi) {
+  const fields = actualDataFields(kpi);
+  return fields.find((field) => field.id === kpi.actualValueSourceFieldId || field.usedAsActualValue) || null;
+}
 
 export default function InputKpi({ assessableUsers, definitions, onSaved }) {
   const [subjectId, setSubjectId] = useState('');
@@ -22,14 +51,20 @@ export default function InputKpi({ assessableUsers, definitions, onSaved }) {
     setAnswers((current) => ({ ...current, [id]: { ...emptyAnswer(), ...current[id], [field]: value } }));
   }
 
-  function updateActualData(id, fieldId, value) {
+  function updateActualData(kpi, field, key, value) {
     setAnswers((current) => {
-      const answer = { ...emptyAnswer(), ...current[id] };
+      const answer = { ...emptyAnswer(), ...current[kpi.id] };
+      const entry = { ...emptyActualDataEntry(), ...(answer.actualData?.[field.id] || {}), [key]: value };
+      const sourceField = sourceFieldFor(kpi);
+      const syncedActualValue = sourceField?.id === field.id && NUMERIC_ACTUAL_TYPES.includes(field.type)
+        ? (entry.valueNumber === '' ? '' : Number(entry.valueNumber))
+        : answer.actualValue;
       return {
         ...current,
-        [id]: {
+        [kpi.id]: {
           ...answer,
-          actualData: { ...(answer.actualData || {}), [fieldId]: value },
+          actualValue: syncedActualValue,
+          actualData: { ...(answer.actualData || {}), [field.id]: entry },
         },
       };
     });
@@ -56,7 +91,12 @@ export default function InputKpi({ assessableUsers, definitions, onSaved }) {
       return;
     }
     const missingKpi = definition.kpis.find((kpi) => {
-      const value = answers[kpi.id]?.actualValue;
+      const answer = { ...emptyAnswer(), ...answers[kpi.id] };
+      const sourceField = sourceFieldFor(kpi);
+      const sourceEntry = sourceField ? answer.actualData?.[sourceField.id] : null;
+      const value = sourceField && NUMERIC_ACTUAL_TYPES.includes(sourceField.type)
+        ? sourceEntry?.valueNumber
+        : answer.actualValue;
       return value === undefined || value === '' || !Number.isFinite(Number(value));
     });
     if (missingKpi) {
@@ -64,9 +104,10 @@ export default function InputKpi({ assessableUsers, definitions, onSaved }) {
       return;
     }
     const missingActualData = definition.kpis.find((kpi) => actualDataFields(kpi).some((field) => {
-      if (field.required === false) return false;
-      const value = answers[kpi.id]?.actualData?.[field.id];
-      return value === undefined || String(value).trim() === '';
+      const entry = answers[kpi.id]?.actualData?.[field.id] || {};
+      return (field.required && !actualDataIsFilled(field, entry))
+        || (field.sourceRequired && !String(entry.sourceDocument || '').trim())
+        || (field.dataDateRequired && !String(entry.dataDate || '').trim());
     }));
     if (missingActualData) {
       setError(`Input Data Aktual untuk KPI ${missingActualData.nama} belum lengkap.`);
@@ -126,36 +167,81 @@ export default function InputKpi({ assessableUsers, definitions, onSaved }) {
     {definition && <div className="card">
       <h3 className="card-title">Form KPI - {subject.nama}</h3>
       {definition.kpis.map((kpi) => {
-        const answer = answers[kpi.id] || {};
+        const answer = { ...emptyAnswer(), ...answers[kpi.id] };
+        const fields = actualDataFields(kpi);
+        const sourceField = sourceFieldFor(kpi);
+        const syncedActualValue = sourceField && NUMERIC_ACTUAL_TYPES.includes(sourceField.type)
+          ? (answer.actualData?.[sourceField.id]?.valueNumber ?? '')
+          : answer.actualValue;
         const tier = calculatedTier(kpi, answer.actualValue);
         const checklist = evidenceChecklist(kpi);
-        const fields = actualDataFields(kpi);
+        const previewTier = calculatedTier(kpi, syncedActualValue);
         return <div className="kpi-block" key={kpi.id}>
           <div className="kpi-head"><div className="kpi-title">{kpi.nama}</div><div className="kpi-bobot">Bobot {kpi.bobot}%</div></div>
           <div className="kpi-target">Target: {kpi.target}</div>
           <div className="formula-list">{[...kpi.tiers].sort((a, b) => b.skor - a.skor).map((item) =>
             <span key={item.skor}><strong>Skor {item.skor}:</strong> {formatRule(item.rule, kpi.unit)}</span>)}
           </div>
-          <label>Nilai Aktual ({kpi.unit})</label>
-          <input type="number" step="any" value={answer.actualValue ?? ''} onChange={(event) => updateAnswer(kpi.id, 'actualValue', event.target.value === '' ? '' : Number(event.target.value))} />
-          <div className={`formula-result ${tier ? 'matched' : ''}`}>
-            {answer.actualValue === undefined || answer.actualValue === '' ? 'Skor dihitung otomatis.' : tier ? <>Hasil formula: <strong>{tier.label}</strong> (skor {tier.skor})</> : 'Nilai belum masuk formula mana pun.'}
+          <label>Nilai Aktual Utama ({kpi.unit})</label>
+          <input
+            type="number"
+            step="any"
+            value={syncedActualValue ?? ''}
+            readOnly={Boolean(sourceField)}
+            onChange={(event) => updateAnswer(kpi.id, 'actualValue', event.target.value === '' ? '' : Number(event.target.value))}
+          />
+          {sourceField && <div className="actual-value-source-note">Nilai aktual utama diambil dari field: {sourceField.label}</div>}
+          <div className={`formula-result ${(sourceField ? previewTier : tier) ? 'matched' : ''}`}>
+            {syncedActualValue === undefined || syncedActualValue === '' ? 'Skor dihitung otomatis.' : (sourceField ? previewTier : tier) ? <>Hasil formula: <strong>{(sourceField ? previewTier : tier).label}</strong> (skor {(sourceField ? previewTier : tier).skor})</> : 'Nilai belum masuk formula mana pun.'}
           </div>
           {fields.length > 0 && <div className="actual-data-panel">
-            <div className="actual-data-title">Input Data Aktual</div>
-            <div className="actual-data-grid">
+            <div className="actual-data-title">C. Input Data Aktual</div>
+            <div className="actual-data-subtitle">Isi data pendukung yang menjadi dasar angka capaian KPI. Data ini akan diverifikasi atasan.</div>
+            <div className="actual-data-list">
               {fields.map((field) => {
-                const isNumeric = ['number', 'percent', 'currency'].includes(field.type);
-                return <div className="actual-data-field" key={field.id}>
-                  <label>{field.label}{field.required === false ? '' : ' *'}</label>
-                  <div className="actual-data-control">
-                    <input
-                      type={field.type === 'date' ? 'date' : isNumeric ? 'number' : 'text'}
-                      step={isNumeric ? 'any' : undefined}
-                      value={answer.actualData?.[field.id] ?? ''}
-                      onChange={(event) => updateActualData(kpi.id, field.id, event.target.value)}
-                    />
-                    {field.unit && <span>{field.unit}</span>}
+                const entry = { ...emptyActualDataEntry(), ...(answer.actualData?.[field.id] || {}) };
+                const isNumeric = NUMERIC_ACTUAL_TYPES.includes(field.type);
+                return <div className="actual-data-entry" key={field.id}>
+                  <div className="actual-data-entry-head">
+                    <div>
+                      <label>{field.label}</label>
+                      {field.helperText && <p>{field.helperText}</p>}
+                    </div>
+                    {field.required && <span>Required</span>}
+                  </div>
+                  <div className="actual-data-entry-grid">
+                    <div className="actual-data-main-input">
+                      {field.type === 'textarea' ? <textarea
+                        rows="3"
+                        value={entry.valueText}
+                        onChange={(event) => updateActualData(kpi, field, 'valueText', event.target.value)}
+                      /> : field.type === 'boolean' ? <select
+                        value={entry.valueText}
+                        onChange={(event) => updateActualData(kpi, field, 'valueText', event.target.value)}
+                      >
+                        <option value="">-- Pilih --</option>
+                        <option value="1">Ya</option>
+                        <option value="0">Tidak</option>
+                      </select> : <input
+                        type={field.type === 'date' ? 'date' : field.type === 'url' ? 'url' : isNumeric ? 'number' : 'text'}
+                        step={isNumeric ? 'any' : undefined}
+                        value={field.type === 'date' ? entry.valueDate : isNumeric ? entry.valueNumber : entry.valueText}
+                        onChange={(event) => updateActualData(kpi, field, field.type === 'date' ? 'valueDate' : isNumeric ? 'valueNumber' : 'valueText', event.target.value)}
+                      />}
+                      {field.unit && <span>{field.unit}</span>}
+                    </div>
+                    <div>
+                      <label>Source Document {field.sourceRequired ? '*' : ''}</label>
+                      <input type="text" value={entry.sourceDocument} onChange={(event) => updateActualData(kpi, field, 'sourceDocument', event.target.value)} />
+                    </div>
+                    <div>
+                      <label>Data Date {field.dataDateRequired ? '*' : ''}</label>
+                      <input type="date" value={entry.dataDate} onChange={(event) => updateActualData(kpi, field, 'dataDate', event.target.value)} />
+                    </div>
+                    <div className="actual-data-note-field">
+                      <label>Submitted Note</label>
+                      <textarea rows="2" value={entry.submittedNote} onChange={(event) => updateActualData(kpi, field, 'submittedNote', event.target.value)} />
+                    </div>
                   </div>
                 </div>;
               })}

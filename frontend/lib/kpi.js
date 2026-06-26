@@ -74,6 +74,7 @@ export function newKpi(id, weight) {
     bobot: weight,
     target: 'Target KPI',
     unit: '%',
+    actualValueSourceFieldId: '',
     actualDataFields: [],
     evidenceChecklist: ['Link laporan / dokumen pendukung'],
     tiers: [

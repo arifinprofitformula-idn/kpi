@@ -124,6 +124,7 @@ function ensureAppSchema(?PDO $pdo = null, bool $force = false): void
     $answerColumns = [
         'calculated_tier' => 'ALTER TABLE submission_answers ADD calculated_tier INT NULL AFTER tier',
         'final_tier' => 'ALTER TABLE submission_answers ADD final_tier INT NULL AFTER calculated_tier',
+        'actual_data_status' => "ALTER TABLE submission_answers ADD actual_data_status VARCHAR(32) NOT NULL DEFAULT 'not_required' AFTER actual_data_json",
         'achievement_note' => 'ALTER TABLE submission_answers ADD achievement_note TEXT NULL AFTER evidence_checklist_json',
         'decision_reason' => 'ALTER TABLE submission_answers ADD decision_reason TEXT NULL AFTER achievement_note',
         'coaching_note' => 'ALTER TABLE submission_answers ADD coaching_note TEXT NULL AFTER decision_reason',
@@ -154,6 +155,37 @@ function ensureAppSchema(?PDO $pdo = null, bool $force = false): void
             CONSTRAINT fk_answer_evidence_answer
                 FOREIGN KEY (submission_answer_id) REFERENCES submission_answers(id) ON DELETE CASCADE,
             CONSTRAINT fk_answer_evidence_verifier
+                FOREIGN KEY (verified_by) REFERENCES users(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+    );
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS submission_answer_actual_data (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            submission_answer_id INT NOT NULL,
+            field_id VARCHAR(64) NOT NULL,
+            field_label VARCHAR(255) NOT NULL,
+            field_type VARCHAR(32) NOT NULL DEFAULT 'text',
+            field_unit VARCHAR(64) NULL,
+            sort_order INT NOT NULL DEFAULT 0,
+            is_required TINYINT(1) NOT NULL DEFAULT 0,
+            source_required TINYINT(1) NOT NULL DEFAULT 0,
+            data_date_required TINYINT(1) NOT NULL DEFAULT 0,
+            verification_required TINYINT(1) NOT NULL DEFAULT 1,
+            used_as_actual_value TINYINT(1) NOT NULL DEFAULT 0,
+            value_text TEXT NULL,
+            value_number DECIMAL(18,4) NULL,
+            value_date DATE NULL,
+            source_document TEXT NULL,
+            data_date DATE NULL,
+            submitted_note TEXT NULL,
+            verification_status VARCHAR(32) NOT NULL DEFAULT 'pending',
+            verifier_note TEXT NULL,
+            verified_by INT NULL,
+            verified_at TIMESTAMP NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT fk_answer_actual_data_answer
+                FOREIGN KEY (submission_answer_id) REFERENCES submission_answers(id) ON DELETE CASCADE,
+            CONSTRAINT fk_answer_actual_data_verifier
                 FOREIGN KEY (verified_by) REFERENCES users(id) ON DELETE SET NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
     );
@@ -368,80 +400,6 @@ function inferAndNormalizeKpiRules(array $definitions): array
     return $definitions;
 }
 
-function defaultActualDataFieldsForKpi(string $positionName, string $kpiName): array
-{
-    if ($positionName !== 'Marketing Communication Leader') {
-        return [];
-    }
-
-    $defaults = [
-        'Demand & Lead Growth Impact' => [
-            ['id' => 'leads_bulan_ini', 'label' => 'Leads Bulan Ini (total dari CRM)', 'type' => 'number', 'unit' => 'leads'],
-            ['id' => 'leads_baseline_ogsm', 'label' => 'Leads Baseline OGSM (referensi)', 'type' => 'number', 'unit' => 'leads'],
-            ['id' => 'growth_aktual', 'label' => '% Growth Aktual (hitung manual)', 'type' => 'percent', 'unit' => '%'],
-            ['id' => 'channel_leads_terbesar', 'label' => 'Channel leads terbesar bulan ini', 'type' => 'text', 'unit' => ''],
-            ['id' => 'file_export_crm', 'label' => 'Nama file / link export CRM', 'type' => 'text', 'unit' => ''],
-            ['id' => 'catatan_anomali', 'label' => 'Catatan anomali atau kendala', 'type' => 'text', 'unit' => '', 'required' => false],
-        ],
-        'Funnel Conversion & Performance Marketing' => [
-            ['id' => 'total_leads_bulan_ini', 'label' => 'Total leads bulan ini', 'type' => 'number', 'unit' => 'leads'],
-            ['id' => 'total_konversi_bulan_ini', 'label' => 'Total konversi bulan ini', 'type' => 'number', 'unit' => 'konversi'],
-            ['id' => 'conversion_rate_bulan_ini', 'label' => 'Conversion Rate bulan ini (%)', 'type' => 'percent', 'unit' => '%'],
-            ['id' => 'conversion_rate_bulan_lalu', 'label' => 'Conversion Rate bulan lalu (%)', 'type' => 'percent', 'unit' => '%'],
-            ['id' => 'biaya_iklan_bulan_ini', 'label' => 'Total biaya iklan bulan ini (Rp)', 'type' => 'currency', 'unit' => 'Rp'],
-            ['id' => 'cpl_bulan_ini', 'label' => 'CPL bulan ini (Rp)', 'type' => 'currency', 'unit' => 'Rp'],
-            ['id' => 'cpl_bulan_lalu', 'label' => 'CPL bulan lalu (Rp)', 'type' => 'currency', 'unit' => 'Rp'],
-            ['id' => 'improvement_digunakan', 'label' => '% Improvement yang digunakan (CR/CPL)', 'type' => 'percent', 'unit' => '%'],
-            ['id' => 'file_data_crm', 'label' => 'Nama file data CRM yang dilampirkan', 'type' => 'text', 'unit' => ''],
-        ],
-        'Produk Digital Revenue Achievement' => [
-            ['id' => 'target_revenue_digital', 'label' => 'Target revenue produk digital bulan ini (Rp)', 'type' => 'currency', 'unit' => 'Rp'],
-            ['id' => 'realisasi_revenue_aktual', 'label' => 'Realisasi revenue aktual (Rp)', 'type' => 'currency', 'unit' => 'Rp'],
-            ['id' => 'achievement', 'label' => '% Achievement', 'type' => 'percent', 'unit' => '%'],
-            ['id' => 'produk_digital', 'label' => 'Daftar produk digital yang masuk hitungan', 'type' => 'text', 'unit' => ''],
-            ['id' => 'refund_pembatalan', 'label' => 'Ada refund/pembatalan? (Rp)', 'type' => 'currency', 'unit' => 'Rp'],
-            ['id' => 'revenue_bersih', 'label' => 'Revenue bersih setelah refund (Rp)', 'type' => 'currency', 'unit' => 'Rp'],
-            ['id' => 'sumber_data', 'label' => 'Sumber data yang digunakan', 'type' => 'text', 'unit' => ''],
-        ],
-        'SLA Support to Brand Executive' => [
-            ['id' => 'total_request_brand', 'label' => 'Total task/request diterima dari Brand Executive', 'type' => 'number', 'unit' => 'task'],
-            ['id' => 'selesai_tepat_waktu', 'label' => 'Jumlah yang diselesaikan tepat waktu (sesuai SLA)', 'type' => 'number', 'unit' => 'task'],
-            ['id' => 'terlambat_sla', 'label' => 'Jumlah yang terlambat / melewati SLA', 'type' => 'number', 'unit' => 'task'],
-            ['id' => 'sla_achievement', 'label' => '% SLA Achievement', 'type' => 'percent', 'unit' => '%'],
-            ['id' => 'daftar_item_terlambat', 'label' => 'Daftar item terlambat (jika ada)', 'type' => 'text', 'unit' => '', 'required' => false],
-            ['id' => 'file_log_timeline', 'label' => 'Nama file log/timeline yang dilampirkan', 'type' => 'text', 'unit' => ''],
-        ],
-        'Campaign & Roadmap Execution' => [
-            ['id' => 'program_direncanakan', 'label' => 'Jumlah program/kampanye direncanakan (dari roadmap)', 'type' => 'number', 'unit' => 'program'],
-            ['id' => 'program_terealisasi', 'label' => 'Jumlah yang terealisasi (benar-benar berjalan)', 'type' => 'number', 'unit' => 'program'],
-            ['id' => 'program_tidak_terealisasi', 'label' => 'Program yang TIDAK terealisasi', 'type' => 'text', 'unit' => '', 'required' => false],
-            ['id' => 'execution_rate', 'label' => '% Execution Rate', 'type' => 'percent', 'unit' => '%'],
-            ['id' => 'file_roadmap_campaign', 'label' => 'Nama file proposal/roadmap kampanye', 'type' => 'text', 'unit' => ''],
-            ['id' => 'approval_program', 'label' => 'Nomor/nama approval program', 'type' => 'text', 'unit' => ''],
-        ],
-        'Team Performance & Discipline' => [
-            ['id' => 'total_anggota_tim', 'label' => 'Total anggota tim yang dinilai bulan ini', 'type' => 'number', 'unit' => 'orang'],
-            ['id' => 'anggota_achieve_kpi', 'label' => 'Jumlah yang ACHIEVE KPI (skor memenuhi standar)', 'type' => 'number', 'unit' => 'orang'],
-            ['id' => 'anggota_tidak_achieve', 'label' => 'Jumlah yang TIDAK achieve KPI', 'type' => 'number', 'unit' => 'orang'],
-            ['id' => 'team_achievement', 'label' => '% Tim yang Achieve', 'type' => 'percent', 'unit' => '%'],
-            ['id' => 'nama_tidak_achieve', 'label' => 'Nama anggota yang tidak achieve (dan alasan)', 'type' => 'text', 'unit' => '', 'required' => false],
-            ['id' => 'rencana_tindak_lanjut', 'label' => 'Rencana tindak lanjut untuk yang tidak achieve', 'type' => 'text', 'unit' => '', 'required' => false],
-            ['id' => 'file_rekap_kpi_tim', 'label' => 'Nama file rekap KPI tim yang dilampirkan', 'type' => 'text', 'unit' => ''],
-        ],
-        'Reporting & Budget Control' => [
-            ['id' => 'deadline_laporan', 'label' => 'Deadline laporan bulanan (sesuai SOP)', 'type' => 'date', 'unit' => ''],
-            ['id' => 'tanggal_laporan_dikirim', 'label' => 'Tanggal laporan aktual dikirimkan', 'type' => 'date', 'unit' => ''],
-            ['id' => 'selisih_hari', 'label' => 'Selisih hari (minus=awal, plus=terlambat)', 'type' => 'number', 'unit' => 'hari'],
-            ['id' => 'jumlah_revisi', 'label' => 'Jumlah revisi yang diminta atasan', 'type' => 'number', 'unit' => 'revisi'],
-            ['id' => 'data_akurat', 'label' => 'Apakah data laporan akurat?', 'type' => 'text', 'unit' => ''],
-            ['id' => 'anggaran_realisasi', 'label' => 'Anggaran yang terealisasi vs yang direncanakan (Rp)', 'type' => 'currency', 'unit' => 'Rp', 'required' => false],
-            ['id' => 'file_laporan', 'label' => 'Link/nama file laporan yang disubmit', 'type' => 'text', 'unit' => ''],
-        ],
-    ];
-
-    return $defaults[$kpiName] ?? [];
-}
-
 function enrichKpiDefinitions(array $definitions): array
 {
     foreach ($definitions as $positionName => $definition) {
@@ -460,6 +418,13 @@ function enrichKpiDefinitions(array $definitions): array
             $rawActualDataFields = is_array($kpi['actualDataFields'] ?? null) ? $kpi['actualDataFields'] : [];
             $actualDataFields = [];
             $actualFieldIds = [];
+            $actualValueSourceFieldId = '';
+            $rawActualValueSourceFieldId = trim((string) ($kpi['actualValueSourceFieldId'] ?? ''));
+            $normalizeBool = fn ($value, bool $default = false): bool => filter_var(
+                $value,
+                FILTER_VALIDATE_BOOL,
+                FILTER_NULL_ON_FAILURE
+            ) ?? $default;
             foreach ($rawActualDataFields as $fieldIndex => $field) {
                 if (!is_array($field)) {
                     continue;
@@ -477,8 +442,14 @@ function enrichKpiDefinitions(array $definitions): array
                     continue;
                 }
                 $type = trim((string) ($field['type'] ?? 'text'));
-                if (!in_array($type, ['number', 'text', 'date', 'percent', 'currency'], true)) {
+                if (!in_array($type, ['number', 'percent', 'currency', 'text', 'textarea', 'date', 'url', 'boolean'], true)) {
                     $type = 'text';
+                }
+                $usedAsActualValue = $normalizeBool($field['usedAsActualValue'] ?? false);
+                if ($usedAsActualValue && $actualValueSourceFieldId === '') {
+                    $actualValueSourceFieldId = $fieldId;
+                } elseif ($usedAsActualValue) {
+                    $usedAsActualValue = false;
                 }
                 $actualFieldIds[$fieldId] = true;
                 $actualDataFields[] = [
@@ -486,12 +457,22 @@ function enrichKpiDefinitions(array $definitions): array
                     'label' => $label,
                     'type' => $type,
                     'unit' => trim((string) ($field['unit'] ?? '')),
-                    'required' => !array_key_exists('required', $field) || (bool) $field['required'],
+                    'required' => $normalizeBool($field['required'] ?? false),
+                    'sourceRequired' => $normalizeBool($field['sourceRequired'] ?? false),
+                    'dataDateRequired' => $normalizeBool($field['dataDateRequired'] ?? false),
+                    'verificationRequired' => $normalizeBool($field['verificationRequired'] ?? true, true),
+                    'usedAsActualValue' => $usedAsActualValue,
+                    'helperText' => trim((string) ($field['helperText'] ?? '')),
                 ];
             }
-            if ($actualDataFields === []) {
-                $actualDataFields = defaultActualDataFieldsForKpi($positionName, (string) ($kpi['nama'] ?? ''));
+            if ($actualValueSourceFieldId === '' && isset($actualFieldIds[$rawActualValueSourceFieldId])) {
+                $actualValueSourceFieldId = $rawActualValueSourceFieldId;
+                foreach ($actualDataFields as &$actualDataField) {
+                    $actualDataField['usedAsActualValue'] = $actualDataField['id'] === $actualValueSourceFieldId;
+                }
+                unset($actualDataField);
             }
+            $kpi['actualValueSourceFieldId'] = $actualValueSourceFieldId;
             $kpi['actualDataFields'] = $actualDataFields;
             $tiers = $kpi['tiers'] ?? [];
             foreach ($tiers as $tierIndex => $tier) {

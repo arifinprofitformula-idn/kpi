@@ -69,6 +69,7 @@ try {
             final_tier INT NULL,
             actual_value DECIMAL(15,4) NULL,
             actual_data_json LONGTEXT NULL,
+            actual_data_status VARCHAR(32) NOT NULL DEFAULT 'not_required',
             link TEXT DEFAULT '',
             evidence_notes TEXT NULL,
             evidence_checklist_json LONGTEXT NULL,
@@ -77,6 +78,35 @@ try {
             coaching_note TEXT NULL,
             evidence_status VARCHAR(32) NOT NULL DEFAULT 'not_required',
             FOREIGN KEY (submission_id) REFERENCES submissions(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+    );
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS submission_answer_actual_data (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            submission_answer_id INT NOT NULL,
+            field_id VARCHAR(64) NOT NULL,
+            field_label VARCHAR(255) NOT NULL,
+            field_type VARCHAR(32) NOT NULL DEFAULT 'text',
+            field_unit VARCHAR(64) NULL,
+            sort_order INT NOT NULL DEFAULT 0,
+            is_required TINYINT(1) NOT NULL DEFAULT 0,
+            source_required TINYINT(1) NOT NULL DEFAULT 0,
+            data_date_required TINYINT(1) NOT NULL DEFAULT 0,
+            verification_required TINYINT(1) NOT NULL DEFAULT 1,
+            used_as_actual_value TINYINT(1) NOT NULL DEFAULT 0,
+            value_text TEXT NULL,
+            value_number DECIMAL(18,4) NULL,
+            value_date DATE NULL,
+            source_document TEXT NULL,
+            data_date DATE NULL,
+            submitted_note TEXT NULL,
+            verification_status VARCHAR(32) NOT NULL DEFAULT 'pending',
+            verifier_note TEXT NULL,
+            verified_by INT NULL,
+            verified_at TIMESTAMP NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (submission_answer_id) REFERENCES submission_answers(id) ON DELETE CASCADE,
+            FOREIGN KEY (verified_by) REFERENCES users(id) ON DELETE SET NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
     );
     $pdo->exec(

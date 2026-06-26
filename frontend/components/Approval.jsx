@@ -28,17 +28,22 @@ function actualDataRows(kpi, answer) {
     return answer.actualData;
   }
   return actualDataFields(kpi).map((field) => ({
-    id: field.id,
-    label: field.label,
-    type: field.type,
-    unit: field.unit,
+    id: null,
+    fieldId: field.id,
+    fieldLabel: field.label,
+    fieldType: field.type,
+    fieldUnit: field.unit,
     value: '',
+    verificationRequired: Boolean(field.verificationRequired),
+    verificationStatus: field.verificationRequired ? 'pending' : 'not_required',
   }));
 }
 
 function formatActualDataValue(row) {
-  if (row.value === undefined || row.value === null || row.value === '') return '-';
-  return `${row.value}${row.unit ? ` ${row.unit}` : ''}`;
+  const value = row.value ?? row.valueText ?? row.valueNumber ?? row.valueDate;
+  const unit = row.unit ?? row.fieldUnit;
+  if (value === undefined || value === null || value === '') return '-';
+  return `${value}${unit ? ` ${unit}` : ''}`;
 }
 
 function formatDocumentDate(timestamp, fallback) {
@@ -211,7 +216,7 @@ function KpiPrintReport({ submission, onClose }) {
               <td>
                 <div>{answer?.actualValue ?? '-'} {kpi.unit}</div>
                 {rows.length > 0 && <div className="formal-actual-data-list">
-                  {rows.map((row) => <span key={row.id}>{row.label}: {formatActualDataValue(row)}</span>)}
+                  {rows.map((row) => <span key={row.id || row.fieldId}>{row.fieldLabel || row.label}: {formatActualDataValue(row)}</span>)}
                 </div>}
               </td>
               <td>{answer?.calculatedTier ?? answer?.tier ?? '-'}</td>
@@ -237,6 +242,26 @@ function evidenceBadgeStatus(evidence) {
   if (evidence.verificationStatus === 'verified') return ['verified', 'Verified'];
   if (evidence.verificationStatus === 'rejected') return ['rejected', 'Rejected'];
   return ['pending', 'Pending'];
+}
+
+function actualDataBadgeStatus(row) {
+  if (!row?.verificationRequired || row?.verificationStatus === 'not_required') return ['not-required', 'Tidak Perlu Verifikasi'];
+  if (row.verificationStatus === 'verified') return ['verified', 'Terverifikasi'];
+  if (row.verificationStatus === 'rejected') return ['rejected', 'Ditolak'];
+  return ['pending', 'Menunggu Verifikasi'];
+}
+
+function verificationSummary(submission) {
+  const actualRows = submission.kpiAnswers.flatMap((answer) => answer.actualData || [])
+    .filter((row) => row.verificationRequired);
+  const evidenceRows = submission.kpiAnswers.flatMap((answer) => answer.evidences || [])
+    .filter((row) => row.isSubmitted || row.verificationStatus !== 'missing');
+  const actualVerified = actualRows.filter((row) => row.verificationStatus === 'verified').length;
+  const evidenceVerified = evidenceRows.filter((row) => row.verificationStatus === 'verified').length;
+  return {
+    actual: `${actualVerified}/${actualRows.length} verified`,
+    evidence: `${evidenceVerified}/${evidenceRows.length} verified`,
+  };
 }
 
 function statusClass(status) {
@@ -286,7 +311,9 @@ function SubmissionModal({ submission, role, onClose, onExport, onRefresh }) {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
   const isAdmin = role === 'admin';
+  const canVerifyActualData = ['admin', 'manager', 'supervisor'].includes(role);
   const locked = submission.status === 'Approved';
+  const summary = verificationSummary(submission);
 
   async function verifyEvidence(evidence, status) {
     setError('');
@@ -306,6 +333,29 @@ function SubmissionModal({ submission, role, onClose, onExport, onRefresh }) {
     setBusy('');
     if (!result.success) {
       setError(result.error || 'Verifikasi evidence gagal.');
+      return;
+    }
+    await onRefresh();
+  }
+
+  async function verifyActualData(row, status) {
+    setError('');
+    if (!row.id) {
+      setError('Actual data belum memiliki data review. Minta evaluator submit ulang untuk membuat item actual data.');
+      return;
+    }
+    const note = prompt(status === 'verified' ? 'Catatan verifikasi actual data (opsional):' : 'Catatan koreksi actual data (wajib):', row.verifierNote || '');
+    if (note === null) return;
+    if (status === 'rejected' && !note.trim()) {
+      setError('Catatan wajib diisi saat actual data ditolak.');
+      return;
+    }
+
+    setBusy(`actual-${status}-${row.id}`);
+    const result = await api('verifyActualData', { actualDataId: row.id, status, note });
+    setBusy('');
+    if (!result.success) {
+      setError(result.error || 'Verifikasi actual data gagal.');
       return;
     }
     await onRefresh();
@@ -385,10 +435,29 @@ function SubmissionModal({ submission, role, onClose, onExport, onRefresh }) {
           <div className="kpi-head"><strong>{kpi.nama}</strong><span className="kpi-bobot">{kpi.bobot}%</span></div>
           <div>Nilai aktual: <strong>{answer?.actualValue ?? '-'}</strong> {kpi.unit}</div>
           {rows.length > 0 && <div className="actual-data-review">
-            <strong>Input Data Aktual:</strong>
-            <dl>
-              {rows.map((row) => <div key={row.id}><dt>{row.label}</dt><dd>{formatActualDataValue(row)}</dd></div>)}
-            </dl>
+            <strong>C. Input Data Aktual</strong>
+            <div className="actual-data-review-list">
+              {rows.map((row) => {
+                const [statusClassName, statusLabel] = actualDataBadgeStatus(row);
+                return <div className="actual-data-review-item" key={row.id || row.fieldId}>
+                  <div className="actual-data-review-main">
+                    <div className="evidence-review-heading">
+                      <strong>{row.fieldLabel || row.label}</strong>
+                      <span className={`evidence-status evidence-status-${statusClassName}`}>{statusLabel}</span>
+                    </div>
+                    <div className="actual-data-review-value">{formatActualDataValue(row)}</div>
+                    {row.sourceDocument && <div className="evidence-note"><strong>Source:</strong> {String(row.sourceDocument).startsWith('http') ? <a href={row.sourceDocument} target="_blank" rel="noreferrer">{row.sourceDocument}</a> : row.sourceDocument}</div>}
+                    {row.dataDate && <div className="evidence-note"><strong>Data date:</strong> {row.dataDate}</div>}
+                    {row.submittedNote && <div className="evidence-note"><strong>Catatan submit:</strong> {row.submittedNote}</div>}
+                    {row.verifierNote && <div className="evidence-note"><strong>Catatan reviewer:</strong> {row.verifierNote}</div>}
+                  </div>
+                  <div className="evidence-actions">
+                    {!locked && canVerifyActualData && row.verificationRequired && <button className="btn secondary small" type="button" disabled={Boolean(busy) || !row.id} onClick={() => verifyActualData(row, 'verified')}>Verify</button>}
+                    {!locked && canVerifyActualData && row.verificationRequired && <button className="btn danger-outline small" type="button" disabled={Boolean(busy) || !row.id} onClick={() => verifyActualData(row, 'rejected')}>Reject</button>}
+                  </div>
+                </div>;
+              })}
+            </div>
           </div>}
           <div>Skor: <strong>{answer?.tier ?? 0}</strong> {tier && `- ${tier.label}`}</div>
           {answer?.link && <a href={answer.link} target="_blank" rel="noreferrer">Buka bukti</a>}
@@ -430,6 +499,10 @@ function SubmissionModal({ submission, role, onClose, onExport, onRefresh }) {
         </div>;
       })}
       <div className="summary-row"><div className="summary-box"><div className="val">{submission.scoreCalc.scoreKPI}</div><div className="lab">Score KPI</div></div><div className="summary-box"><div className={`val ${cls}`}>{submission.scoreCalc.finalAchievement}%</div><div className="lab">{label}</div></div></div>
+      <div className="verification-summary">
+        <span>Actual Data: <strong>{summary.actual}</strong></span>
+        <span>Evidence: <strong>{summary.evidence}</strong></span>
+      </div>
       <div className="actions">
         <button className="btn secondary" type="button" onClick={onExport}>Export PDF</button>
         {isAdmin && !locked && <button className="btn secondary" type="button" disabled={Boolean(busy)} onClick={requestEvidenceRevision}>Minta Revisi Evidence</button>}

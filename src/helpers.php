@@ -315,7 +315,8 @@ function loadSubmissionAnswers(int $submissionId): array
                 final_tier AS finalTier, actual_value AS actualValue, actual_data_json AS actualDataJson, link,
                 evidence_notes AS notes, evidence_checklist_json AS checklistJson,
                 achievement_note AS achievementNote, decision_reason AS decisionReason,
-                coaching_note AS coachingNote, evidence_status AS evidenceStatus
+                coaching_note AS coachingNote, actual_data_status AS actualDataStatus,
+                evidence_status AS evidenceStatus
          FROM submission_answers WHERE submission_id = ? ORDER BY id ASC'
     );
     $stmt->execute([$submissionId]);
@@ -324,10 +325,13 @@ function loadSubmissionAnswers(int $submissionId): array
         $answer['calculatedTier'] = $answer['calculatedTier'] !== null ? (int) $answer['calculatedTier'] : (int) $answer['tier'];
         $answer['finalTier'] = $answer['finalTier'] !== null ? (int) $answer['finalTier'] : (int) $answer['tier'];
         $answer['actualValue'] = $answer['actualValue'] !== null ? (float) $answer['actualValue'] : null;
-        $actualData = is_string($answer['actualDataJson'] ?? null) && $answer['actualDataJson'] !== ''
+        $storedActualData = loadSubmissionAnswerActualData((int) $answer['answerId']);
+        $legacyActualData = is_string($answer['actualDataJson'] ?? null) && $answer['actualDataJson'] !== ''
             ? json_decode($answer['actualDataJson'], true)
             : [];
-        $answer['actualData'] = is_array($actualData) ? $actualData : [];
+        $answer['actualData'] = $storedActualData !== []
+            ? $storedActualData
+            : (is_array($legacyActualData) ? $legacyActualData : []);
         unset($answer['actualDataJson']);
         $checklist = is_string($answer['checklistJson'] ?? null) && $answer['checklistJson'] !== ''
             ? json_decode($answer['checklistJson'], true)
@@ -345,6 +349,61 @@ function loadSubmissionAnswers(int $submissionId): array
     }
     unset($answer);
     return $answers;
+}
+
+function loadSubmissionAnswerActualData(int $submissionAnswerId): array
+{
+    if ($submissionAnswerId <= 0) {
+        return [];
+    }
+
+    ensureAppSchema();
+    $stmt = getDb()->prepare(
+        'SELECT actual.*, verifier.name AS verifier_name
+         FROM submission_answer_actual_data actual
+         LEFT JOIN users verifier ON verifier.id = actual.verified_by
+         WHERE actual.submission_answer_id = ?
+         ORDER BY actual.sort_order ASC, actual.id ASC'
+    );
+    $stmt->execute([$submissionAnswerId]);
+
+    return array_map(function ($row) {
+        $valueNumber = $row['value_number'] !== null ? (float) $row['value_number'] : null;
+        $valueText = $row['value_text'];
+        $valueDate = $row['value_date'];
+        $displayValue = $valueText ?? ($valueNumber !== null ? (string) $valueNumber : ($valueDate ?? ''));
+
+        return [
+            'id' => (int) $row['id'],
+            'fieldId' => $row['field_id'],
+            'fieldLabel' => $row['field_label'],
+            'fieldType' => $row['field_type'],
+            'fieldUnit' => $row['field_unit'],
+            'sortOrder' => (int) $row['sort_order'],
+            'isRequired' => (bool) $row['is_required'],
+            'sourceRequired' => (bool) $row['source_required'],
+            'dataDateRequired' => (bool) $row['data_date_required'],
+            'verificationRequired' => (bool) $row['verification_required'],
+            'usedAsActualValue' => (bool) $row['used_as_actual_value'],
+            'valueText' => $valueText,
+            'valueNumber' => $valueNumber,
+            'valueDate' => $valueDate,
+            'sourceDocument' => $row['source_document'],
+            'dataDate' => $row['data_date'],
+            'submittedNote' => $row['submitted_note'],
+            'verificationStatus' => $row['verification_status'],
+            'verifierNote' => $row['verifier_note'],
+            'verifiedBy' => $row['verified_by'] !== null ? [
+                'id' => (int) $row['verified_by'],
+                'name' => $row['verifier_name'],
+            ] : null,
+            'verifiedAt' => $row['verified_at'],
+            'label' => $row['field_label'],
+            'type' => $row['field_type'],
+            'unit' => $row['field_unit'],
+            'value' => $displayValue,
+        ];
+    }, $stmt->fetchAll());
 }
 
 function recordSubmissionAudit(
