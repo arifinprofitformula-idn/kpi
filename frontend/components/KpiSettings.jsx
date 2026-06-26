@@ -25,6 +25,22 @@ const ACTUAL_DATA_TYPES = {
   boolean: 'Ya/Tidak',
 };
 const ACTUAL_DATA_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+const DETAIL_TABS = [
+  { id: 'basic', label: 'Dasar KPI' },
+  { id: 'actualData', label: 'Input Data Aktual' },
+  { id: 'scoring', label: 'Formula Skor' },
+  { id: 'evidence', label: 'Bukti Tambahan' },
+];
+const PRESET_OPTIONS = [
+  { type: 'brandExecutiveMeezanPreset', label: 'Brand Executive Meezan Gold' },
+  { type: 'brandExecutiveSilvergramPreset', label: 'Brand Executive Silvergram' },
+  { type: 'staffMarcomCrmDatabasePreset', label: 'Staff Marcom CRM & Database' },
+  { type: 'staffMarcomDesignWebPreset', label: 'Staff Marcom Design & Web' },
+  { type: 'staffMarcomSocialMediaPreset', label: 'Staff Marcom Social Media' },
+  { type: 'staffMarcomPhotoVideoProductionPreset', label: 'Staff Marcom Photo & Video Production' },
+  { type: 'staffMarkomDesignerVideoPreset', label: 'Staff Markom Designer & Video' },
+  { type: 'markomPreset', label: 'Markom Leader' },
+];
 const MARKOM_ACTUAL_DATA_PRESET = [
   {
     match: ['Demand & Lead Growth'],
@@ -282,6 +298,9 @@ export default function KpiSettings({ definitions, onSaved }) {
   const [selectedPosition, setSelectedPosition] = useState(() => Object.keys(definitions)[0] || '');
   const [positionName, setPositionName] = useState(() => Object.keys(definitions)[0] || '');
   const [expandedKpi, setExpandedKpi] = useState(0);
+  const [activeDetailTab, setActiveDetailTab] = useState('basic');
+  const [presetMenuOpen, setPresetMenuOpen] = useState(false);
+  const [kpiSearch, setKpiSearch] = useState('');
   const [confirmation, setConfirmation] = useState(null);
   const [saving, setSaving] = useState(false);
   const positions = Object.keys(draft);
@@ -363,6 +382,19 @@ export default function KpiSettings({ definitions, onSaved }) {
           kpi.actualValueSourceFieldId = value;
         }
       }
+      return next;
+    });
+  }
+
+  function updateActualValueSourceField(kpiIndex, fieldId) {
+    setDraft((current) => {
+      const next = clone(current);
+      const kpi = next[selectedPosition].kpis[kpiIndex];
+      const fields = kpi.actualDataFields ?? [];
+      kpi.actualValueSourceFieldId = fieldId;
+      fields.forEach((field) => {
+        field.usedAsActualValue = Boolean(fieldId) && field.id === fieldId;
+      });
       return next;
     });
   }
@@ -531,6 +563,9 @@ export default function KpiSettings({ definitions, onSaved }) {
     setSelectedPosition(name);
     setPositionName(name);
     setExpandedKpi(0);
+    setActiveDetailTab('basic');
+    setPresetMenuOpen(false);
+    setKpiSearch('');
   }
 
   function addPosition() {
@@ -542,6 +577,8 @@ export default function KpiSettings({ definitions, onSaved }) {
     setSelectedPosition(name);
     setPositionName(name);
     setExpandedKpi(0);
+    setActiveDetailTab('basic');
+    setKpiSearch('');
   }
 
   function renamePosition(name) {
@@ -569,6 +606,7 @@ export default function KpiSettings({ definitions, onSaved }) {
       return next;
     });
     setExpandedKpi(kpis.length);
+    setActiveDetailTab('basic');
   }
 
   function duplicateKpi(kpiIndex) {
@@ -585,6 +623,20 @@ export default function KpiSettings({ definitions, onSaved }) {
       return next;
     });
     setExpandedKpi(kpiIndex + 1);
+    setActiveDetailTab('basic');
+  }
+
+  function moveKpi(kpiIndex, direction) {
+    const targetIndex = kpiIndex + direction;
+    if (!definition || targetIndex < 0 || targetIndex >= definition.kpis.length) return;
+    setDraft((current) => {
+      const next = clone(current);
+      const kpis = next[selectedPosition].kpis;
+      const [item] = kpis.splice(kpiIndex, 1);
+      kpis.splice(targetIndex, 0, item);
+      return next;
+    });
+    setExpandedKpi(targetIndex);
   }
 
   function confirmDeletePosition() {
@@ -595,6 +647,7 @@ export default function KpiSettings({ definitions, onSaved }) {
     setSelectedPosition(first);
     setPositionName(first);
     setExpandedKpi(first ? 0 : null);
+    setActiveDetailTab('basic');
     setConfirmation(null);
   }
 
@@ -604,7 +657,9 @@ export default function KpiSettings({ definitions, onSaved }) {
       next[selectedPosition].kpis.splice(kpiIndex, 1);
       return next;
     });
-    setExpandedKpi(null);
+    const nextLength = Math.max((definition?.kpis.length || 1) - 1, 0);
+    setExpandedKpi(nextLength ? Math.min(kpiIndex, nextLength - 1) : null);
+    setActiveDetailTab('basic');
     setConfirmation(null);
   }
 
@@ -637,12 +692,31 @@ export default function KpiSettings({ definitions, onSaved }) {
     setSelectedPosition(first);
     setPositionName(first);
     setExpandedKpi(first ? 0 : null);
+    setActiveDetailTab('basic');
+    setPresetMenuOpen(false);
+    setKpiSearch('');
   }
 
   const totalWeight = definition?.kpis.reduce((sum, item) => sum + Number(item.bobot || 0), 0) || 0;
   const validation = positionValidation(totalWeight);
   const committedPreview = buildDraftWithCommittedPositionName();
   const allPositionsValid = !committedPreview.error && definitionsAreValid(committedPreview.definitions);
+  const kpis = definition?.kpis || [];
+  const selectedKpiIndex = kpis.length ? Math.min(Math.max(Number.isInteger(expandedKpi) ? expandedKpi : 0, 0), kpis.length - 1) : null;
+  const selectedKpi = selectedKpiIndex === null ? null : kpis[selectedKpiIndex];
+  const selectedChecklist = selectedKpi?.evidenceChecklist || [];
+  const selectedDataFields = selectedKpi?.actualDataFields || [];
+  const selectedDataFieldIssues = selectedKpi ? actualDataFieldIssues(selectedKpi) : [];
+  const invalidKpiCount = kpis.filter((kpi) => !kpiIsComplete(kpi)).length;
+  const validationIssueCount = invalidKpiCount + (Math.abs(totalWeight - 100) < 0.001 ? 0 : 1) + (committedPreview.error ? 1 : 0);
+  const actualDataKpiCount = kpis.filter((kpi) => actualDataFields(kpi).length > 0).length;
+  const evidenceKpiCount = kpis.filter((kpi) => evidenceChecklist(kpi).length > 0).length;
+  const visibleKpis = kpis
+    .map((kpi, index) => ({ kpi, index }))
+    .filter(({ kpi }) => String(kpi.nama || '').toLowerCase().includes(kpiSearch.trim().toLowerCase()));
+  const validationSummary = allPositionsValid
+    ? 'Semua posisi valid. Perubahan siap disimpan.'
+    : `Ada ${validationIssueCount || 1} error validasi. Periksa KPI yang ditandai.`;
 
   return <div className="kpi-builder">
     <section className="builder-header-card">
@@ -650,7 +724,7 @@ export default function KpiSettings({ definitions, onSaved }) {
       <p>Kelola template KPI berdasarkan posisi atau jabatan.</p>
     </section>
 
-    <section className="builder-toolbar">
+    <section className="builder-toolbar builder-toolbar-card">
       <div className="position-picker form-group">
         <label className="form-label">Posisi / Jabatan</label>
         <select className="form-select" value={selectedPosition} onChange={(event) => selectPosition(event.target.value)}>
@@ -658,14 +732,24 @@ export default function KpiSettings({ definitions, onSaved }) {
         </select>
       </div>
       <div className="builder-toolbar-actions">
-        <button className="btn secondary" onClick={() => setConfirmation({ type: 'staffMarkomDesignerVideoPreset' })} disabled={!definition}>Terapkan Preset Staff Markom Designer & Video</button>
-        <button className="btn secondary" onClick={() => setConfirmation({ type: 'staffMarcomPhotoVideoProductionPreset' })} disabled={!definition}>Terapkan Preset Staff Marcom Photo & Video Production</button>
-        <button className="btn secondary" onClick={() => setConfirmation({ type: 'staffMarcomSocialMediaPreset' })} disabled={!definition}>Terapkan Preset Staff Marcom Social Media</button>
-        <button className="btn secondary" onClick={() => setConfirmation({ type: 'staffMarcomDesignWebPreset' })} disabled={!definition}>Terapkan Preset Staff Marcom Design & Web</button>
-        <button className="btn secondary" onClick={() => setConfirmation({ type: 'staffMarcomCrmDatabasePreset' })} disabled={!definition}>Terapkan Preset Staff Marcom CRM & Database</button>
-        <button className="btn secondary" onClick={() => setConfirmation({ type: 'brandExecutiveSilvergramPreset' })} disabled={!definition}>Terapkan Preset Brand Executive Silvergram</button>
-        <button className="btn secondary" onClick={() => setConfirmation({ type: 'brandExecutiveMeezanPreset' })} disabled={!definition}>Terapkan Preset Brand Executive Meezan Gold</button>
-        <button className="btn secondary" onClick={() => setConfirmation({ type: 'markomPreset' })} disabled={!definition}>Terapkan Preset Input Data Aktual Markom Leader</button>
+        <div className="preset-dropdown">
+          <button className="btn secondary preset-dropdown-toggle" type="button" onClick={() => setPresetMenuOpen((open) => !open)} disabled={!definition}>
+            Terapkan Preset <span aria-hidden="true">⌄</span>
+          </button>
+          {presetMenuOpen && <div className="preset-dropdown-menu">
+            {PRESET_OPTIONS.map((preset) => <button
+              type="button"
+              key={preset.type}
+              onClick={() => {
+                setPresetMenuOpen(false);
+                setConfirmation({ type: preset.type });
+              }}
+            >
+              <span aria-hidden="true">▣</span>
+              {preset.label}
+            </button>)}
+          </div>}
+        </div>
         <button className="btn secondary" onClick={addPosition}>+ Tambah Posisi</button>
         <button className="btn" onClick={addKpi} disabled={!definition}>+ Tambah KPI</button>
       </div>
@@ -681,139 +765,160 @@ export default function KpiSettings({ definitions, onSaved }) {
           <div className="summary-stat"><span>Jumlah KPI</span><strong>{definition.kpis.length} KPI</strong></div>
           <div className="summary-stat"><span>Total Bobot</span><strong>{totalWeight}%</strong></div>
           <div className="summary-stat"><span>Status Validasi</span><span className={`validation-badge ${validation.className}`}>{validation.label}</span></div>
+          <div className="summary-stat"><span>KPI dengan Input Data Aktual</span><strong>{actualDataKpiCount}/{kpis.length}</strong></div>
+          <div className="summary-stat"><span>KPI dengan Bukti Tambahan</span><strong>{evidenceKpiCount}</strong></div>
         </div>
         <button className="btn danger-outline small" onClick={() => setConfirmation({ type: 'position' })}>Hapus Posisi</button>
       </section>
 
-      <section className="kpi-accordion-list">
-        {definition.kpis.map((kpi, kpiIndex) => {
-          const complete = kpiIsComplete(kpi);
-          const expanded = expandedKpi === kpiIndex;
-          const checklist = kpi.evidenceChecklist || [];
-          const dataFields = kpi.actualDataFields || [];
-          const dataFieldIssues = actualDataFieldIssues(kpi);
-          return <article className={`kpi-accordion-card ${expanded ? 'expanded' : ''}`} key={`${kpi.id}-${kpiIndex}`}>
-            <div className="kpi-accordion-summary">
-              <button className="accordion-toggle" onClick={() => setExpandedKpi(expanded ? null : kpiIndex)} aria-expanded={expanded}>
-                <span className="accordion-chevron" aria-hidden="true">{expanded ? '−' : '+'}</span>
-                <span className="accordion-title"><small>KPI {kpiIndex + 1}</small><strong>{kpi.nama || 'Indikator tanpa nama'}</strong></span>
-              </button>
-              <div className="kpi-quick-meta">
-                <span><small>Bobot</small><strong>{Number(kpi.bobot || 0)}%</strong></span>
-                <span><small>Satuan</small><strong>{kpi.unit || '-'}</strong></span>
-                <span><small>Data Aktual</small><strong>{actualDataFields(kpi).length} field</strong></span>
-                <span><small>Bukti</small><strong>{evidenceChecklist(kpi).length} item</strong></span>
-                <span className={`completion-badge ${complete ? 'complete' : 'incomplete'}`}>{complete ? 'Lengkap' : 'Belum Lengkap'}</span>
+      <section className="builder-layout">
+        <aside className="builder-sidebar">
+          <div className="builder-sidebar-head">
+            <div>
+              <strong>Daftar KPI</strong>
+              <span>{kpis.length} KPI</span>
+            </div>
+            <input className="form-control" value={kpiSearch} placeholder="Cari KPI..." onChange={(event) => setKpiSearch(event.target.value)} />
+          </div>
+          <div className="kpi-list">
+            {visibleKpis.map(({ kpi, index }) => {
+              const complete = kpiIsComplete(kpi);
+              const active = index === selectedKpiIndex;
+              return <article className={`kpi-list-card ${active ? 'active' : ''} ${complete ? '' : 'invalid'}`} key={`${kpi.id}-${index}`}>
+                <button className="kpi-list-main" type="button" onClick={() => { setExpandedKpi(index); setActiveDetailTab('basic'); }}>
+                  <span className="kpi-list-number">{index + 1}</span>
+                  <span className="kpi-list-copy">
+                    <strong>{kpi.nama || 'Indikator tanpa nama'}</strong>
+                    <small>Bobot {Number(kpi.bobot || 0)}% | {kpi.unit || '-'}</small>
+                    <small>Data Aktual: {actualDataFields(kpi).length} field | Bukti: {evidenceChecklist(kpi).length} item</small>
+                  </span>
+                  <span className={`completion-badge ${complete ? 'complete' : 'incomplete'}`}>{complete ? 'Lengkap' : 'Belum Lengkap'}</span>
+                </button>
+                <div className="kpi-list-actions">
+                  <button className="btn ghost small" type="button" onClick={() => moveKpi(index, -1)} disabled={index === 0}>Naik</button>
+                  <button className="btn ghost small" type="button" onClick={() => moveKpi(index, 1)} disabled={index === kpis.length - 1}>Turun</button>
+                  <button className="btn ghost small" type="button" onClick={() => duplicateKpi(index)}>Duplikasi</button>
+                  <button className="btn danger-outline small" type="button" onClick={() => setConfirmation({ type: 'kpi', index })}>Hapus</button>
+                </div>
+              </article>;
+            })}
+            {visibleKpis.length === 0 && <div className="evidence-empty">Tidak ada KPI yang cocok dengan pencarian.</div>}
+            <button className="btn secondary kpi-sidebar-add" type="button" onClick={addKpi}>+ Tambah KPI</button>
+          </div>
+        </aside>
+
+        <section className="builder-detail">
+          {selectedKpi ? <>
+            <div className="builder-detail-head">
+              <div>
+                <span>KPI {selectedKpiIndex + 1} dari {kpis.length}</span>
+                <h3>{selectedKpi.nama || 'Indikator tanpa nama'}</h3>
               </div>
               <div className="kpi-card-actions">
-                <button className="btn secondary small" onClick={() => setExpandedKpi(expanded ? null : kpiIndex)}>{expanded ? 'Tutup Detail' : 'Edit Detail'}</button>
-                <button className="btn ghost small" onClick={() => duplicateKpi(kpiIndex)}>Duplikasi</button>
-                <button className="btn danger-outline small" onClick={() => setConfirmation({ type: 'kpi', index: kpiIndex })}>Hapus</button>
+                <button className="btn ghost small" type="button" onClick={() => duplicateKpi(selectedKpiIndex)}>Duplikasi</button>
+                <button className="btn danger-outline small" type="button" onClick={() => setConfirmation({ type: 'kpi', index: selectedKpiIndex })}>Hapus KPI</button>
               </div>
             </div>
+            <div className="kpi-detail-tabs" role="tablist" aria-label="Editor KPI">
+              {DETAIL_TABS.map((tab) => <button
+                className={`kpi-detail-tab ${activeDetailTab === tab.id ? 'active' : ''}`}
+                type="button"
+                role="tab"
+                aria-selected={activeDetailTab === tab.id}
+                key={tab.id}
+                onClick={() => setActiveDetailTab(tab.id)}
+              >
+                {tab.label}
+              </button>)}
+            </div>
+            <div className="kpi-detail-panel">
+              {activeDetailTab === 'basic' && <>
+                <div className="form-grid form-grid-3 kpi-short-fields">
+                  <div className="form-group">
+                    <label className="form-label">ID KPI</label>
+                    <input className="form-control" value={selectedKpi.id} onChange={(event) => updateKpi(selectedKpiIndex, 'id', event.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Bobot (%)</label>
+                    <input className="form-control" type="number" min="0" max="100" step="0.01" value={selectedKpi.bobot} onChange={(event) => updateKpi(selectedKpiIndex, 'bobot', Number(event.target.value))} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Satuan</label>
+                    <select
+                      className="form-select"
+                      value={UNIT_OPTIONS.includes(selectedKpi.unit) ? selectedKpi.unit : CUSTOM_UNIT}
+                      onChange={(event) => updateKpi(selectedKpiIndex, 'unit', event.target.value === CUSTOM_UNIT ? '' : event.target.value)}
+                    >
+                      {UNIT_OPTIONS.map((unit) => <option value={unit} key={unit}>{unit}</option>)}
+                      <option value={CUSTOM_UNIT}>Custom</option>
+                    </select>
+                  </div>
+                </div>
+                {!UNIT_OPTIONS.includes(selectedKpi.unit) && <div className="form-group custom-unit-field">
+                  <label className="form-label">Satuan Custom</label>
+                  <input className="form-control" value={selectedKpi.unit} placeholder="Masukkan satuan KPI" onChange={(event) => updateKpi(selectedKpiIndex, 'unit', event.target.value)} />
+                </div>}
+                <div className="form-group">
+                  <label className="form-label">Nama Indikator</label>
+                  <input className="form-control" value={selectedKpi.nama} onChange={(event) => updateKpi(selectedKpiIndex, 'nama', event.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Target</label>
+                  <textarea className="form-textarea" rows="4" value={selectedKpi.target} onChange={(event) => updateKpi(selectedKpiIndex, 'target', event.target.value)} />
+                  <p className="field-helper">Target digunakan untuk perhitungan skor KPI.</p>
+                </div>
+              </>}
 
-            {expanded && <div className="kpi-accordion-detail">
-              <div className="form-grid form-grid-3 kpi-short-fields">
-                <div className="form-group">
-                  <label className="form-label">ID KPI</label>
-                  <input className="form-control" value={kpi.id} onChange={(event) => updateKpi(kpiIndex, 'id', event.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Bobot (%)</label>
-                  <input className="form-control" type="number" min="0" max="100" step="0.01" value={kpi.bobot} onChange={(event) => updateKpi(kpiIndex, 'bobot', Number(event.target.value))} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Satuan</label>
-                  <select
-                    className="form-select"
-                    value={UNIT_OPTIONS.includes(kpi.unit) ? kpi.unit : CUSTOM_UNIT}
-                    onChange={(event) => updateKpi(kpiIndex, 'unit', event.target.value === CUSTOM_UNIT ? '' : event.target.value)}
-                  >
-                    {UNIT_OPTIONS.map((unit) => <option value={unit} key={unit}>{unit}</option>)}
-                    <option value={CUSTOM_UNIT}>Custom</option>
-                  </select>
-                </div>
-              </div>
-              {!UNIT_OPTIONS.includes(kpi.unit) && <div className="form-group custom-unit-field">
-                <label className="form-label">Satuan Custom</label>
-                <input className="form-control" value={kpi.unit} placeholder="Masukkan satuan KPI" onChange={(event) => updateKpi(kpiIndex, 'unit', event.target.value)} />
-              </div>}
-              <div className="form-group">
-                <label className="form-label">Nama Indikator</label>
-                <input className="form-control" value={kpi.nama} onChange={(event) => updateKpi(kpiIndex, 'nama', event.target.value)} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Target</label>
-                <textarea className="form-textarea" rows="3" value={kpi.target} onChange={(event) => updateKpi(kpiIndex, 'target', event.target.value)} />
-              </div>
-
-              <section className="actual-data-settings-section">
+              {activeDetailTab === 'actualData' && <section className="actual-data-settings-section">
                 <div className="scoring-section-heading">
                   <div>
                     <h4>Input Data Aktual</h4>
-                    <p>Atur field data aktual yang wajib diisi sebelum evidence dan keputusan skor final.</p>
+                    <p>Sumber Dokumen / Bukti pada setiap field menjadi evidence utama untuk verifikasi atasan.</p>
                   </div>
-                  <button className="btn secondary small" type="button" onClick={() => addActualDataField(kpiIndex)}>+ Tambah Actual Data Field</button>
+                  <button className="btn secondary small" type="button" onClick={() => addActualDataField(selectedKpiIndex)}>+ Tambah Actual Data Field</button>
+                </div>
+                <div className="actual-value-source-control">
+                  <label className="form-label">Nilai Aktual Utama Diambil Dari</label>
+                  <select className="form-select" value={selectedKpi.actualValueSourceFieldId || ''} onChange={(event) => updateActualValueSourceField(selectedKpiIndex, event.target.value)}>
+                    <option value="">Input manual Nilai Aktual</option>
+                    {selectedDataFields.map((field) => <option key={field.id} value={field.id}>{field.label || field.id}</option>)}
+                  </select>
                 </div>
                 <div className="actual-data-settings-list">
-                  {dataFields.map((field, fieldIndex) => {
-                    const issues = dataFieldIssues[fieldIndex] || [];
+                  {selectedDataFields.map((field, fieldIndex) => {
+                    const issues = selectedDataFieldIssues[fieldIndex] || [];
                     return <div className={`actual-data-field-card ${issues.length ? 'has-warning' : ''}`} key={`${field.id || 'field'}-${fieldIndex}`}>
                       <div className="actual-data-card-head">
                         <strong>{field.label || `Field ${fieldIndex + 1}`}</strong>
                         <div className="actual-data-card-actions">
-                          <button className="btn ghost small" type="button" onClick={() => moveActualDataField(kpiIndex, fieldIndex, -1)} disabled={fieldIndex === 0}>Naik</button>
-                          <button className="btn ghost small" type="button" onClick={() => moveActualDataField(kpiIndex, fieldIndex, 1)} disabled={fieldIndex === dataFields.length - 1}>Turun</button>
-                          <button className="btn secondary small" type="button" onClick={() => duplicateActualDataField(kpiIndex, fieldIndex)}>Duplikasi</button>
-                          <button className="btn danger-outline small" type="button" onClick={() => removeActualDataField(kpiIndex, fieldIndex)}>Hapus</button>
+                          <button className="btn ghost small" type="button" onClick={() => moveActualDataField(selectedKpiIndex, fieldIndex, -1)} disabled={fieldIndex === 0}>Naik</button>
+                          <button className="btn ghost small" type="button" onClick={() => moveActualDataField(selectedKpiIndex, fieldIndex, 1)} disabled={fieldIndex === selectedDataFields.length - 1}>Turun</button>
+                          <button className="btn secondary small" type="button" onClick={() => duplicateActualDataField(selectedKpiIndex, fieldIndex)}>Duplikasi</button>
+                          <button className="btn danger-outline small" type="button" onClick={() => removeActualDataField(selectedKpiIndex, fieldIndex)}>Hapus</button>
                         </div>
                       </div>
                       <div className="actual-data-settings-grid">
                         <div className="form-group">
                           <label className="form-label">Field ID</label>
-                          <input
-                            className="form-control"
-                            value={field.id || ''}
-                            placeholder="actual_data_1"
-                            onChange={(event) => updateActualDataField(kpiIndex, fieldIndex, 'id', event.target.value)}
-                          />
+                          <input className="form-control" value={field.id || ''} placeholder="actual_data_1" onChange={(event) => updateActualDataField(selectedKpiIndex, fieldIndex, 'id', event.target.value)} />
                         </div>
                         <div className="form-group actual-data-label-field">
                           <label className="form-label">Label Field</label>
-                          <input
-                            className="form-control"
-                            value={field.label || ''}
-                            placeholder="Contoh: Total leads"
-                            onChange={(event) => updateActualDataField(kpiIndex, fieldIndex, 'label', event.target.value)}
-                          />
+                          <input className="form-control" value={field.label || ''} placeholder="Contoh: Total leads" onChange={(event) => updateActualDataField(selectedKpiIndex, fieldIndex, 'label', event.target.value)} />
                         </div>
                         <div className="form-group">
                           <label className="form-label">Type</label>
-                          <select
-                            className="form-select"
-                            value={field.type || 'text'}
-                            onChange={(event) => updateActualDataField(kpiIndex, fieldIndex, 'type', event.target.value)}
-                          >
+                          <select className="form-select" value={field.type || 'text'} onChange={(event) => updateActualDataField(selectedKpiIndex, fieldIndex, 'type', event.target.value)}>
                             {Object.keys(ACTUAL_DATA_TYPES).map((value) => <option value={value} key={value}>{value}</option>)}
                           </select>
                         </div>
                         <div className="form-group">
                           <label className="form-label">Unit</label>
-                          <input
-                            className="form-control"
-                            value={field.unit || ''}
-                            placeholder="%, Rp, hari"
-                            onChange={(event) => updateActualDataField(kpiIndex, fieldIndex, 'unit', event.target.value)}
-                          />
+                          <input className="form-control" value={field.unit || ''} placeholder="%, Rp, hari" onChange={(event) => updateActualDataField(selectedKpiIndex, fieldIndex, 'unit', event.target.value)} />
                         </div>
                         <div className="form-group actual-data-helper-field">
                           <label className="form-label">Helper Text</label>
-                          <input
-                            className="form-control"
-                            value={field.helperText || ''}
-                            placeholder="Petunjuk singkat untuk pengisi"
-                            onChange={(event) => updateActualDataField(kpiIndex, fieldIndex, 'helperText', event.target.value)}
-                          />
+                          <input className="form-control" value={field.helperText || ''} placeholder="Petunjuk singkat untuk pengisi" onChange={(event) => updateActualDataField(selectedKpiIndex, fieldIndex, 'helperText', event.target.value)} />
                         </div>
                       </div>
                       <div className="actual-data-checkbox-grid">
@@ -824,11 +929,7 @@ export default function KpiSettings({ definitions, onSaved }) {
                           ['verificationRequired', 'Verification Required'],
                           ['usedAsActualValue', 'Used as Actual Value'],
                         ].map(([key, label]) => <label className="checkbox-row compact-checkbox" key={key}>
-                          <input
-                            type="checkbox"
-                            checked={Boolean(field[key])}
-                            onChange={(event) => updateActualDataField(kpiIndex, fieldIndex, key, event.target.checked)}
-                          />
+                          <input type="checkbox" checked={Boolean(field[key])} onChange={(event) => updateActualDataField(selectedKpiIndex, fieldIndex, key, event.target.checked)} />
                           <span>{label}</span>
                         </label>)}
                       </div>
@@ -837,37 +938,14 @@ export default function KpiSettings({ definitions, onSaved }) {
                       </div>}
                     </div>;
                   })}
-                  {dataFields.length === 0 && <div className="evidence-empty">Belum ada field Input Data Aktual untuk KPI ini.</div>}
+                  {selectedDataFields.length === 0 && <div className="evidence-empty">Belum ada field Input Data Aktual untuk KPI ini.</div>}
                 </div>
-              </section>
+              </section>}
 
-              <section className="evidence-settings-section">
+              {activeDetailTab === 'scoring' && <section className="scoring-section">
                 <div className="scoring-section-heading">
                   <div>
-                    <h4>Checklist Bukti Wajib</h4>
-                    <p>Item yang diaktifkan di sini harus dicentang saat penilaian KPI disubmit.</p>
-                    <p>Gunakan Evidence Tambahan hanya jika dokumen tidak bisa diwakili oleh Sumber Dokumen/Bukti pada Input Data Aktual.</p>
-                  </div>
-                  <button className="btn secondary small" type="button" onClick={() => addEvidenceItem(kpiIndex)}>+ Tambah Bukti</button>
-                </div>
-                <div className="evidence-settings-list">
-                  {checklist.map((item, itemIndex) => <div className="evidence-settings-row" key={itemIndex}>
-                    <input
-                      className="form-control"
-                      value={item}
-                      placeholder="Contoh: Dashboard Sales bulan berjalan"
-                      onChange={(event) => updateEvidenceItem(kpiIndex, itemIndex, event.target.value)}
-                    />
-                    <button className="btn danger-outline small" type="button" onClick={() => removeEvidenceItem(kpiIndex, itemIndex)}>Hapus</button>
-                  </div>)}
-                  {checklist.length === 0 && <div className="evidence-empty">Belum ada checklist bukti wajib untuk KPI ini.</div>}
-                </div>
-              </section>
-
-              <section className="scoring-section">
-                <div className="scoring-section-heading">
-                  <div>
-                    <h4>Label Capaian</h4>
+                    <h4>Formula Skor</h4>
                     <p>Atur skor, label, dan kriteria formula untuk setiap tingkat pencapaian.</p>
                   </div>
                 </div>
@@ -877,46 +955,63 @@ export default function KpiSettings({ definitions, onSaved }) {
                     <span>Label</span>
                     <span>Kriteria</span>
                   </div>
-                  {kpi.tiers.map((tier, tierIndex) => <div className="scoring-matrix-row" key={tierIndex}>
+                  {selectedKpi.tiers.map((tier, tierIndex) => <div className="scoring-matrix-row" key={tierIndex}>
                     <div className="form-group scoring-score-field">
                       <label className="form-label">Skor</label>
-                      <input className="form-control" type="number" min="0" max="2" value={tier.skor} onChange={(event) => updateTier(kpiIndex, tierIndex, 'skor', Number(event.target.value))} />
+                      <input className="form-control" type="number" min="0" max="2" value={tier.skor} onChange={(event) => updateTier(selectedKpiIndex, tierIndex, 'skor', Number(event.target.value))} />
                     </div>
                     <div className="form-group scoring-label-field">
                       <label className="form-label">Label</label>
-                      <input className="form-control" value={tier.label} onChange={(event) => updateTier(kpiIndex, tierIndex, 'label', event.target.value)} />
+                      <input className="form-control" value={tier.label} onChange={(event) => updateTier(selectedKpiIndex, tierIndex, 'label', event.target.value)} />
                     </div>
                     <div className="scoring-criteria-field">
                       <div className={`form-grid ${tier.rule.operator === 'between' ? 'scoring-rule-grid-between' : 'scoring-rule-grid'}`}>
                         <div className="form-group">
                           <label className="form-label">Operator</label>
-                          <select className="form-select" value={tier.rule.operator} onChange={(event) => updateTier(kpiIndex, tierIndex, 'rule.operator', event.target.value)}>{Object.entries(OPERATORS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>
+                          <select className="form-select" value={tier.rule.operator} onChange={(event) => updateTier(selectedKpiIndex, tierIndex, 'rule.operator', event.target.value)}>{Object.entries(OPERATORS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>
                         </div>
                         <div className="form-group">
                           <label className="form-label">{tier.rule.operator === 'between' ? 'Batas bawah' : 'Nilai batas'}</label>
-                          <input className="form-control" type="number" step="any" value={tier.rule.value} onChange={(event) => updateTier(kpiIndex, tierIndex, 'rule.value', Number(event.target.value))} />
+                          <input className="form-control" type="number" step="any" value={tier.rule.value} onChange={(event) => updateTier(selectedKpiIndex, tierIndex, 'rule.value', Number(event.target.value))} />
                         </div>
                         {tier.rule.operator === 'between' && <div className="form-group">
                           <label className="form-label">Batas atas</label>
-                          <input className="form-control" type="number" step="any" value={tier.rule.max ?? ''} onChange={(event) => updateTier(kpiIndex, tierIndex, 'rule.max', Number(event.target.value))} />
+                          <input className="form-control" type="number" step="any" value={tier.rule.max ?? ''} onChange={(event) => updateTier(selectedKpiIndex, tierIndex, 'rule.max', Number(event.target.value))} />
                         </div>}
                       </div>
-                      <div className="formula-preview"><strong>Formula aktif:</strong> {formatRule(tier.rule, kpi.unit)}</div>
+                      <div className="formula-preview"><strong>Formula aktif:</strong> {formatRule(tier.rule, selectedKpi.unit)}</div>
                     </div>
                   </div>)}
                 </div>
-              </section>
-            </div>}
-          </article>;
-        })}
-        {definition.kpis.length === 0 && <div className="empty-builder-state"><strong>Belum ada KPI</strong><span>Tambahkan indikator KPI pertama untuk posisi ini.</span><button className="btn" onClick={addKpi}>+ Tambah KPI</button></div>}
+              </section>}
+
+              {activeDetailTab === 'evidence' && <section className="evidence-settings-section">
+                <div className="scoring-section-heading">
+                  <div>
+                    <h4>Bukti Tambahan</h4>
+                    <p>Gunakan Bukti Tambahan hanya jika ada dokumen yang tidak bisa diwakili oleh Sumber Dokumen / Bukti pada Input Data Aktual.</p>
+                  </div>
+                  <button className="btn secondary small" type="button" onClick={() => addEvidenceItem(selectedKpiIndex)}>+ Tambah Bukti</button>
+                </div>
+                <div className="evidence-settings-list">
+                  {selectedChecklist.map((item, itemIndex) => <div className="evidence-settings-row" key={itemIndex}>
+                    <input className="form-control" value={item} placeholder="Contoh: Dashboard Sales bulan berjalan" onChange={(event) => updateEvidenceItem(selectedKpiIndex, itemIndex, event.target.value)} />
+                    <button className="btn danger-outline small" type="button" onClick={() => removeEvidenceItem(selectedKpiIndex, itemIndex)}>Hapus</button>
+                  </div>)}
+                  {selectedChecklist.length === 0 && <div className="evidence-empty">Belum ada bukti tambahan. Sebagian besar KPI cukup menggunakan Sumber Dokumen / Bukti pada Input Data Aktual.</div>}
+                </div>
+              </section>}
+            </div>
+          </> : <div className="empty-builder-state"><strong>Belum ada KPI</strong><span>Tambahkan indikator KPI pertama untuk posisi ini.</span><button className="btn" onClick={addKpi}>+ Tambah KPI</button></div>}
+        </section>
       </section>
     </>}
 
     <div className="builder-action-spacer" aria-hidden="true" />
     <footer className="builder-sticky-actions">
-      <div className="save-validation-copy">
-        {!allPositionsValid && <span>Total bobot harus 100% dan seluruh field KPI harus lengkap sebelum pengaturan dapat disimpan.</span>}
+      <div className={`builder-validation-summary ${allPositionsValid ? 'valid' : 'invalid'}`}>
+        <span>{validationSummary}</span>
+        <small>Perubahan belum disimpan sampai Anda klik Simpan Pengaturan.</small>
       </div>
       <div className="builder-save-buttons">
         <button className="btn secondary" onClick={reset} disabled={saving}>Batalkan</button>
