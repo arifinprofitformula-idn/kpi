@@ -460,6 +460,137 @@
     font-size: 6.5px;
 }
 
+.formal-verification-page {
+    font-size: 6.8px;
+}
+
+.formal-verification-summary-list {
+    display: grid;
+    gap: 2.2mm;
+}
+
+.formal-verification-kpi {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    border: .25mm solid #444;
+    padding: 1.4mm;
+}
+
+.formal-verification-kpi-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 22mm 18mm 14mm;
+    gap: 1.2mm;
+    align-items: center;
+    margin-bottom: 1.2mm;
+    padding-bottom: 1mm;
+    border-bottom: .25mm solid #777;
+}
+
+.formal-verification-kpi-head strong {
+    font-size: 7.4px;
+}
+
+.formal-verification-kpi-head span {
+    text-align: center;
+    font-weight: 700;
+}
+
+.formal-verification-title {
+    margin: 1.2mm 0 .8mm;
+    color: #111;
+    font-size: 6.9px;
+    font-weight: 700;
+}
+
+.formal-verification-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.formal-verification-table th,
+.formal-verification-table td {
+    vertical-align: top;
+    border: .22mm solid #555;
+    padding: .65mm .8mm;
+    font-size: 6.4px;
+    line-height: 1.22;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.formal-verification-table th {
+    text-align: left;
+    background: #eef3f7;
+}
+
+.formal-actual-summary th:nth-child(1),
+.formal-actual-summary td:nth-child(1) {
+    width: 23%;
+}
+
+.formal-actual-summary th:nth-child(2),
+.formal-actual-summary td:nth-child(2) {
+    width: 14%;
+}
+
+.formal-actual-summary th:nth-child(3),
+.formal-actual-summary td:nth-child(3) {
+    width: 23%;
+}
+
+.formal-actual-summary th:nth-child(4),
+.formal-actual-summary td:nth-child(4) {
+    width: 12%;
+}
+
+.formal-actual-summary th:nth-child(5),
+.formal-actual-summary td:nth-child(5) {
+    width: 13%;
+}
+
+.formal-actual-summary th:nth-child(6),
+.formal-actual-summary td:nth-child(6) {
+    width: 15%;
+}
+
+.formal-evidence-summary th:nth-child(1),
+.formal-evidence-summary td:nth-child(1) {
+    width: 27%;
+}
+
+.formal-evidence-summary th:nth-child(2),
+.formal-evidence-summary td:nth-child(2) {
+    width: 17%;
+}
+
+.formal-evidence-summary th:nth-child(3),
+.formal-evidence-summary td:nth-child(3) {
+    width: 26%;
+}
+
+.formal-evidence-summary th:nth-child(4),
+.formal-evidence-summary td:nth-child(4) {
+    width: 14%;
+}
+
+.formal-evidence-summary th:nth-child(5),
+.formal-evidence-summary td:nth-child(5) {
+    width: 16%;
+}
+
+.formal-decision-summary th {
+    width: 28mm;
+}
+
+.formal-empty-summary {
+    border: .22mm solid #999;
+    padding: .8mm;
+    color: #555;
+    font-size: 6.4px;
+    font-style: italic;
+}
+
 .formal-logo-cell {
     width: 26%;
     padding: 1.3mm 2mm;

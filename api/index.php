@@ -912,7 +912,13 @@ function handleApproveSubmissionWithEvidence(array $payload): void
     $evidenceStatus = $evidenceStmt->fetch();
     $totalEvidence = (int) ($evidenceStatus['total_evidence'] ?? 0);
     $incompleteEvidence = (int) ($evidenceStatus['incomplete_evidence'] ?? 0);
-    if ($requiredEvidenceCount > 0 && ($totalEvidence < $requiredEvidenceCount || $incompleteEvidence > 0)) {
+    $evidenceTrackingStmt = $pdo->prepare(
+        "SELECT COUNT(*) FROM submission_answers
+         WHERE submission_id = ? AND evidence_status <> 'not_required'"
+    );
+    $evidenceTrackingStmt->execute([$id]);
+    $hasEvidenceTracking = $totalEvidence > 0 || (int) $evidenceTrackingStmt->fetchColumn() > 0;
+    if ($hasEvidenceTracking && $requiredEvidenceCount > 0 && ($totalEvidence < $requiredEvidenceCount || $incompleteEvidence > 0)) {
         jsonResponse([
             'success' => false,
             'error' => 'Approval ditolak: seluruh evidence wajib harus berstatus verified terlebih dahulu.',
@@ -941,7 +947,12 @@ function handleApproveSubmissionWithEvidence(array $payload): void
             'error' => "Approval ditolak: Input Data Aktual {$incompleteActualData['field_label']} pada KPI {$kpiName} harus verified terlebih dahulu.",
         ]);
     }
-    if ($requiredActualDataFields !== []) {
+    $actualDataTrackingStmt = $pdo->prepare(
+        "SELECT COUNT(*) FROM submission_answers
+         WHERE submission_id = ? AND actual_data_status <> 'not_required'"
+    );
+    $actualDataTrackingStmt->execute([$id]);
+    if ($requiredActualDataFields !== [] && (int) $actualDataTrackingStmt->fetchColumn() > 0) {
         $actualRowsStmt = $pdo->prepare(
             'SELECT answer.kpi_id, actual.field_id, actual.verification_status
              FROM submission_answer_actual_data actual
@@ -1053,42 +1064,46 @@ function handleUpdateFinalKpiDecision(array $payload): void
         $evidenceStmt->execute(['verified', $answerId]);
         $evidence = $evidenceStmt->fetch();
         if (
+            $answer['evidence_status'] !== 'not_required'
+            &&
             count($requiredEvidence) > 0
             && ((int) ($evidence['total'] ?? 0) < count($requiredEvidence) || (int) ($evidence['incomplete'] ?? 0) > 0)
         ) {
             jsonResponse(['success' => false, 'error' => 'Final score 2 hanya dapat disimpan setelah required evidence verified.']);
         }
-        $actualDataStmt = $pdo->prepare(
-            'SELECT field_id, field_label, verification_status
-             FROM submission_answer_actual_data
-             WHERE submission_answer_id = ?
-               AND verification_required = 1
-             ORDER BY sort_order ASC, id ASC
-            '
-        );
-        $actualDataStmt->execute([$answerId]);
-        $actualRows = [];
-        foreach ($actualDataStmt->fetchAll() as $row) {
-            $actualRows[(string) $row['field_id']] = [
-                'label' => (string) $row['field_label'],
-                'status' => (string) $row['verification_status'],
-            ];
-            if ((string) $row['verification_status'] !== 'verified') {
-                jsonResponse(['success' => false, 'error' => "Final score 2 hanya dapat disimpan setelah Input Data Aktual {$row['field_label']} verified."]);
+        if ($answer['actual_data_status'] !== 'not_required') {
+            $actualDataStmt = $pdo->prepare(
+                'SELECT field_id, field_label, verification_status
+                 FROM submission_answer_actual_data
+                 WHERE submission_answer_id = ?
+                   AND verification_required = 1
+                 ORDER BY sort_order ASC, id ASC
+                '
+            );
+            $actualDataStmt->execute([$answerId]);
+            $actualRows = [];
+            foreach ($actualDataStmt->fetchAll() as $row) {
+                $actualRows[(string) $row['field_id']] = [
+                    'label' => (string) $row['field_label'],
+                    'status' => (string) $row['verification_status'],
+                ];
+                if ((string) $row['verification_status'] !== 'verified') {
+                    jsonResponse(['success' => false, 'error' => "Final score 2 hanya dapat disimpan setelah Input Data Aktual {$row['field_label']} verified."]);
+                }
             }
-        }
-        if (is_array($kpiDefinition)) {
-            foreach (($kpiDefinition['actualDataFields'] ?? []) as $field) {
-                if (!is_array($field) || !($field['verificationRequired'] ?? true)) {
-                    continue;
-                }
-                $fieldId = trim((string) ($field['id'] ?? ''));
-                if ($fieldId === '') {
-                    continue;
-                }
-                if (($actualRows[$fieldId]['status'] ?? '') !== 'verified') {
-                    $fieldLabel = (string) ($field['label'] ?? $fieldId);
-                    jsonResponse(['success' => false, 'error' => "Final score 2 hanya dapat disimpan setelah Input Data Aktual {$fieldLabel} verified."]);
+            if (is_array($kpiDefinition)) {
+                foreach (($kpiDefinition['actualDataFields'] ?? []) as $field) {
+                    if (!is_array($field) || !($field['verificationRequired'] ?? true)) {
+                        continue;
+                    }
+                    $fieldId = trim((string) ($field['id'] ?? ''));
+                    if ($fieldId === '') {
+                        continue;
+                    }
+                    if (($actualRows[$fieldId]['status'] ?? '') !== 'verified') {
+                        $fieldLabel = (string) ($field['label'] ?? $fieldId);
+                        jsonResponse(['success' => false, 'error' => "Final score 2 hanya dapat disimpan setelah Input Data Aktual {$fieldLabel} verified."]);
+                    }
                 }
             }
         }

@@ -15,6 +15,148 @@ const ACTUAL_DATA_TYPES = {
   boolean: 'Ya/Tidak',
 };
 const ACTUAL_DATA_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+const MARKOM_ACTUAL_DATA_PRESET = [
+  {
+    match: ['Demand & Lead Growth'],
+    actualValueSourceFieldId: 'growth_actual',
+    fields: [
+      presetField('current_leads', 'Leads Bulan Ini (total dari CRM)', 'number', 'leads'),
+      presetField('baseline_leads', 'Leads Baseline OGSM (referensi)', 'number', 'leads'),
+      presetField('growth_actual', '% Growth Aktual', 'percent', '%', {
+        usedAsActualValue: true,
+        helperText: 'Growth = (Leads Bulan Ini - Baseline) / Baseline x 100',
+      }),
+      presetField('top_lead_channel', 'Channel leads terbesar bulan ini', 'text', '', {
+        required: false,
+        sourceRequired: false,
+        dataDateRequired: false,
+      }),
+      presetField('crm_export_link', 'Nama file / link export CRM', 'url', '', {
+        sourceRequired: false,
+        dataDateRequired: false,
+      }),
+      presetField('anomaly_note', 'Catatan anomali atau kendala', 'textarea', '', {
+        required: false,
+        sourceRequired: false,
+        dataDateRequired: false,
+        verificationRequired: false,
+      }),
+    ],
+  },
+  {
+    match: ['Funnel Conversion'],
+    actualValueSourceFieldId: 'selected_improvement',
+    fields: [
+      presetField('current_leads', 'Total leads bulan ini', 'number', 'leads'),
+      presetField('current_conversions', 'Total konversi bulan ini', 'number', 'conversions'),
+      presetField('current_conversion_rate', 'Conversion Rate bulan ini (%)', 'percent', '%'),
+      presetField('previous_conversion_rate', 'Conversion Rate bulan lalu (%)', 'percent', '%'),
+      presetField('current_ad_spend', 'Total biaya iklan bulan ini (Rp)', 'currency', 'Rp'),
+      presetField('current_cpl', 'CPL bulan ini (Rp)', 'currency', 'Rp'),
+      presetField('previous_cpl', 'CPL bulan lalu (Rp)', 'currency', 'Rp'),
+      presetField('selected_improvement', '% Improvement yang digunakan (CR/CPL)', 'percent', '%', { usedAsActualValue: true }),
+      presetField('crm_data_file', 'Nama file data CRM yang dilampirkan', 'url', '', {
+        sourceRequired: false,
+        dataDateRequired: false,
+      }),
+    ],
+  },
+  {
+    match: ['Produk Digital Revenue', 'Digital Revenue'],
+    actualValueSourceFieldId: 'achievement_percent',
+    fields: [
+      presetField('target_revenue', 'Target revenue produk digital bulan ini (Rp)', 'currency', 'Rp'),
+      presetField('actual_revenue', 'Realisasi revenue aktual (Rp)', 'currency', 'Rp'),
+      presetField('achievement_percent', '% Achievement', 'percent', '%', { usedAsActualValue: true }),
+      presetField('product_sku_list', 'Daftar produk digital yang masuk hitungan', 'textarea', ''),
+      presetField('refund_amount', 'Ada refund/pembatalan? (Rp)', 'currency', 'Rp', { required: false }),
+      presetField('net_revenue', 'Revenue bersih setelah refund (Rp)', 'currency', 'Rp'),
+      presetField('source_used', 'Sumber data yang digunakan', 'text', ''),
+    ],
+  },
+  {
+    match: ['SLA Support'],
+    actualValueSourceFieldId: 'sla_achievement',
+    fields: [
+      presetField('total_requests', 'Total task/request diterima dari Brand Executive', 'number', 'task'),
+      presetField('on_time_completed', 'Jumlah yang diselesaikan tepat waktu (sesuai SLA)', 'number', 'task'),
+      presetField('late_count', 'Jumlah yang terlambat / melewati SLA', 'number', 'task'),
+      presetField('sla_achievement', '% SLA Achievement', 'percent', '%', { usedAsActualValue: true }),
+      presetField('late_items', 'Daftar item terlambat (jika ada)', 'textarea', '', { required: false }),
+      presetField('approval_log_file', 'Nama file log/timeline yang dilampirkan', 'url', '', {
+        sourceRequired: false,
+        dataDateRequired: false,
+      }),
+    ],
+  },
+  {
+    match: ['Campaign & Roadmap'],
+    actualValueSourceFieldId: 'execution_rate',
+    fields: [
+      presetField('planned_campaigns', 'Jumlah program/kampanye direncanakan (dari roadmap)', 'number', 'program'),
+      presetField('executed_campaigns', 'Jumlah yang terealisasi (benar-benar berjalan)', 'number', 'program'),
+      presetField('not_executed_programs', 'Program yang TIDAK terealisasi', 'textarea', '', { required: false }),
+      presetField('execution_rate', '% Execution Rate', 'percent', '%', { usedAsActualValue: true }),
+      presetField('campaign_roadmap_file', 'Nama file proposal/roadmap kampanye', 'url', '', {
+        sourceRequired: false,
+        dataDateRequired: false,
+      }),
+      presetField('approval_reference', 'Nomor/nama approval program', 'text', ''),
+    ],
+  },
+  {
+    match: ['Team Performance'],
+    actualValueSourceFieldId: 'team_achievement',
+    fields: [
+      presetField('total_team_members', 'Total anggota tim yang dinilai bulan ini', 'number', 'orang'),
+      presetField('achieve_members', 'Jumlah yang ACHIEVE KPI', 'number', 'orang'),
+      presetField('not_achieve_members', 'Jumlah yang TIDAK achieve KPI', 'number', 'orang'),
+      presetField('team_achievement', '% Tim yang Achieve', 'percent', '%', { usedAsActualValue: true }),
+      presetField('not_achieve_names', 'Nama anggota yang tidak achieve (dan alasan)', 'textarea', '', { required: false }),
+      presetField('follow_up_plan', 'Rencana tindak lanjut untuk yang tidak achieve', 'textarea', '', { required: false }),
+      presetField('team_kpi_file', 'Nama file rekap KPI tim yang dilampirkan', 'url', '', {
+        sourceRequired: false,
+        dataDateRequired: false,
+      }),
+    ],
+  },
+  {
+    match: ['Reporting & Budget'],
+    actualValueSourceFieldId: 'report_achievement_percent',
+    fields: [
+      presetField('report_deadline', 'Deadline laporan bulanan (sesuai SOP)', 'date', ''),
+      presetField('report_sent_date', 'Tanggal laporan aktual dikirimkan', 'date', ''),
+      presetField('day_difference', 'Selisih hari (minus=awal, plus=terlambat)', 'number', 'hari'),
+      presetField('revision_count', 'Jumlah revisi yang diminta atasan', 'number', 'revisi'),
+      presetField('report_accuracy', 'Apakah data laporan akurat?', 'text', ''),
+      presetField('budget_realization', 'Anggaran yang terealisasi vs yang direncanakan (Rp)', 'currency', 'Rp', { required: false }),
+      presetField('report_file_link', 'Link/nama file laporan yang disubmit', 'url', '', {
+        sourceRequired: false,
+        dataDateRequired: false,
+      }),
+      presetField('report_achievement_percent', 'Capaian laporan aktual (%)', 'percent', '%', {
+        usedAsActualValue: true,
+        helperText: '100 jika tepat waktu dan akurat; 70 jika terlambat ringan <=2 hari dan data akurat; <70 jika lebih dari 1x terlambat atau data tidak akurat.',
+      }),
+    ],
+  },
+];
+
+function presetField(id, label, type, unit, overrides = {}) {
+  return {
+    id,
+    label,
+    type,
+    unit,
+    required: true,
+    sourceRequired: true,
+    dataDateRequired: true,
+    verificationRequired: true,
+    usedAsActualValue: false,
+    helperText: '',
+    ...overrides,
+  };
+}
 
 function newActualDataField(id = 'actual_data_1') {
   return {
@@ -83,6 +225,32 @@ function positionValidation(totalWeight) {
     return { label: 'Belum Lengkap', className: 'warning' };
   }
   return { label: 'Melebihi 100%', className: 'danger' };
+}
+
+function findPresetForKpi(kpi, kpiIndex) {
+  const name = String(kpi?.nama || '').toLowerCase();
+  return MARKOM_ACTUAL_DATA_PRESET.find((preset) => preset.match.some((keyword) => name.includes(keyword.toLowerCase())))
+    || MARKOM_ACTUAL_DATA_PRESET[kpiIndex]
+    || null;
+}
+
+function mergePresetIntoKpi(kpi, preset) {
+  const existingFields = Array.isArray(kpi.actualDataFields) ? kpi.actualDataFields : [];
+  const presetFields = preset.fields.map((field) => clone(field));
+  const presetIds = new Set(presetFields.map((field) => field.id));
+  const mergedFields = [
+    ...presetFields,
+    ...existingFields.filter((field) => !presetIds.has(field.id)),
+  ].map((field) => ({
+    ...field,
+    usedAsActualValue: field.id === preset.actualValueSourceFieldId,
+  }));
+
+  return {
+    ...kpi,
+    actualValueSourceFieldId: preset.actualValueSourceFieldId,
+    actualDataFields: mergedFields,
+  };
 }
 
 function ConfirmModal({ title, description, confirmLabel, onCancel, onConfirm }) {
@@ -240,6 +408,20 @@ export default function KpiSettings({ definitions, onSaved }) {
     });
   }
 
+  function applyMarkomActualDataPreset() {
+    setDraft((current) => {
+      const next = clone(current);
+      const kpis = next[selectedPosition]?.kpis || [];
+      kpis.forEach((kpi, kpiIndex) => {
+        const preset = findPresetForKpi(kpi, kpiIndex);
+        if (!preset) return;
+        kpis[kpiIndex] = mergePresetIntoKpi(kpi, preset);
+      });
+      return next;
+    });
+    setConfirmation(null);
+  }
+
   function addEvidenceItem(kpiIndex) {
     setDraft((current) => {
       const next = clone(current);
@@ -389,6 +571,7 @@ export default function KpiSettings({ definitions, onSaved }) {
         </select>
       </div>
       <div className="builder-toolbar-actions">
+        <button className="btn secondary" onClick={() => setConfirmation({ type: 'markomPreset' })} disabled={!definition}>Terapkan Preset Input Data Aktual Markom Leader</button>
         <button className="btn secondary" onClick={addPosition}>+ Tambah Posisi</button>
         <button className="btn" onClick={addKpi} disabled={!definition}>+ Tambah KPI</button>
       </div>
@@ -659,6 +842,13 @@ export default function KpiSettings({ definitions, onSaved }) {
       confirmLabel="Ya, Hapus KPI"
       onCancel={() => setConfirmation(null)}
       onConfirm={() => confirmDeleteKpi(confirmation.index)}
+    />}
+    {confirmation?.type === 'markomPreset' && <ConfirmModal
+      title="Terapkan Preset Markom Leader?"
+      description="Preset ini akan mengisi Section C Input Data Aktual untuk KPI pada posisi yang sedang dipilih berdasarkan dokumen evidence. Data yang sudah ada tidak akan ditimpa kecuali Field ID sama, dan perubahan belum tersimpan sampai Anda klik Simpan Pengaturan."
+      confirmLabel="Terapkan Preset"
+      onCancel={() => setConfirmation(null)}
+      onConfirm={applyMarkomActualDataPreset}
     />}
   </div>;
 }

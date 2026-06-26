@@ -46,6 +46,34 @@ function formatActualDataValue(row) {
   return `${value}${unit ? ` ${unit}` : ''}`;
 }
 
+function verificationStatusLabel(status) {
+  if (status === 'verified') return 'Terverifikasi';
+  if (status === 'rejected') return 'Ditolak';
+  if (status === 'not_required') return 'Tidak Perlu Verifikasi';
+  if (status === 'missing') return 'Belum Ada';
+  return 'Menunggu Verifikasi';
+}
+
+function printActualDataRows(answer) {
+  return Array.isArray(answer?.actualData) ? answer.actualData : [];
+}
+
+function printEvidenceRows(kpi, answer) {
+  if (Array.isArray(answer?.evidences) && answer.evidences.length > 0) {
+    return answer.evidences;
+  }
+
+  return evidenceChecklist(kpi).map((label) => ({
+    id: null,
+    requirementId: label,
+    requirementLabel: label,
+    expectedFormat: '',
+    evidenceUrl: '',
+    verificationStatus: 'missing',
+    verifierNote: '',
+  }));
+}
+
 function formatDocumentDate(timestamp, fallback) {
   const source = timestamp || fallback;
   if (!source) return '-';
@@ -202,36 +230,57 @@ function KpiPrintReport({ submission, onClose }) {
         </section>
       </section>
 
-      <section className="kpi-print-page formal-second-page">
+      <section className="kpi-print-page formal-second-page formal-verification-page">
         <DocumentHeader page="3" effectiveDate={effectiveDate} totalPages={3} />
-        <div className="formal-department">EVIDENCE &amp; VERIFICATION SUMMARY</div>
-        <table className="formal-evidence-summary">
-          <thead><tr><th>KPI</th><th>Actual</th><th>Calc</th><th>Final</th><th>Evidence</th><th>Decision</th></tr></thead>
-          <tbody>{kpis.map((kpi) => {
+        <div className="formal-department">ACTUAL DATA &amp; EVIDENCE VERIFICATION SUMMARY</div>
+        <div className="formal-verification-summary-list">
+          {kpis.map((kpi) => {
             const answer = submission.kpiAnswers.find((item) => item.id === kpi.id);
-            const evidences = answer?.evidences || [];
-            const rows = actualDataRows(kpi, answer);
-            return <tr key={kpi.id}>
-              <td>{kpi.nama}</td>
-              <td>
-                <div>{answer?.actualValue ?? '-'} {kpi.unit}</div>
-                {rows.length > 0 && <div className="formal-actual-data-list">
-                  {rows.map((row) => <span key={row.id || row.fieldId}>{row.fieldLabel || row.label}: {formatActualDataValue(row)}</span>)}
-                </div>}
-              </td>
-              <td>{answer?.calculatedTier ?? answer?.tier ?? '-'}</td>
-              <td>{answer?.finalTier ?? answer?.tier ?? '-'}</td>
-              <td>{evidences.length
-                ? evidences.map((evidence) => `${evidence.requirementLabel}: ${evidenceBadgeStatus(evidence)[1]}`).join('; ')
-                : 'Tidak ada evidence checklist pada KPI ini.'}</td>
-              <td>
-                {answer?.decisionReason && <div><strong>Reason:</strong> {answer.decisionReason}</div>}
-                {answer?.coachingNote && <div><strong>Coaching:</strong> {answer.coachingNote}</div>}
-                {!answer?.decisionReason && !answer?.coachingNote && '-'}
-              </td>
-            </tr>;
-          })}</tbody>
-        </table>
+            const actualRows = printActualDataRows(answer);
+            const evidenceRows = printEvidenceRows(kpi, answer);
+            return <section className="formal-verification-kpi" key={kpi.id}>
+              <div className="formal-verification-kpi-head">
+                <strong>{kpi.nama}</strong>
+                <span>Actual: {answer?.actualValue ?? '-'} {kpi.unit}</span>
+                <span>Calculated: {answer?.calculatedTier ?? answer?.tier ?? '-'}</span>
+                <span>Final: {answer?.finalTier ?? answer?.tier ?? '-'}</span>
+              </div>
+
+              <div className="formal-verification-title">C. Input Data Aktual</div>
+              {actualRows.length > 0 ? <table className="formal-verification-table formal-actual-summary">
+                <thead><tr><th>Field</th><th>Value</th><th>Source</th><th>Data Date</th><th>Status</th><th>Verifier Note</th></tr></thead>
+                <tbody>{actualRows.map((row) => <tr key={row.id || row.fieldId}>
+                  <td>{row.fieldLabel || row.label || '-'}</td>
+                  <td>{formatActualDataValue(row)}</td>
+                  <td>{row.sourceDocument || '-'}</td>
+                  <td>{row.dataDate || row.valueDate || '-'}</td>
+                  <td>{verificationStatusLabel(row.verificationStatus)}</td>
+                  <td>{row.verifierNote || '-'}</td>
+                </tr>)}</tbody>
+              </table> : <div className="formal-empty-summary">Tidak ada Input Data Aktual untuk KPI ini.</div>}
+
+              <div className="formal-verification-title">D. Evidence Checklist</div>
+              {evidenceRows.length > 0 ? <table className="formal-verification-table formal-evidence-summary">
+                <thead><tr><th>Evidence</th><th>Expected Format</th><th>Link/File</th><th>Status</th><th>Verifier Note</th></tr></thead>
+                <tbody>{evidenceRows.map((evidence) => <tr key={evidence.id || evidence.requirementId || evidence.requirementLabel}>
+                  <td>{evidence.requirementLabel || '-'}</td>
+                  <td>{evidence.expectedFormat || '-'}</td>
+                  <td>{evidence.evidenceUrl || '-'}</td>
+                  <td>{verificationStatusLabel(evidence.verificationStatus)}</td>
+                  <td>{evidence.verifierNote || '-'}</td>
+                </tr>)}</tbody>
+              </table> : <div className="formal-empty-summary">Tidak ada evidence checklist untuk KPI ini.</div>}
+
+              <div className="formal-verification-title">E. Final Decision</div>
+              <table className="formal-verification-table formal-decision-summary">
+                <tbody>
+                  <tr><th>Decision Reason</th><td>{answer?.decisionReason || '-'}</td></tr>
+                  <tr><th>Coaching Note</th><td>{answer?.coachingNote || '-'}</td></tr>
+                </tbody>
+              </table>
+            </section>;
+          })}
+        </div>
       </section>
     </article>
   </div>, document.body);
@@ -481,8 +530,8 @@ function SubmissionModal({ submission, role, onClose, onExport, onRefresh }) {
                   {evidence.verifierNote && <div className="evidence-note"><strong>Catatan reviewer:</strong> {evidence.verifierNote}</div>}
                 </div>
                 <div className="evidence-actions">
-                  {!locked && <button className="btn secondary small" type="button" disabled={Boolean(busy) || !evidence.id} onClick={() => verifyEvidence(evidence, 'verified')}>Verify</button>}
-                  {!locked && <button className="btn danger-outline small" type="button" disabled={Boolean(busy) || !evidence.id} onClick={() => verifyEvidence(evidence, 'rejected')}>Reject / Request Correction</button>}
+                  {!locked && canVerifyActualData && <button className="btn secondary small" type="button" disabled={Boolean(busy) || !evidence.id} onClick={() => verifyEvidence(evidence, 'verified')}>Verify</button>}
+                  {!locked && canVerifyActualData && <button className="btn danger-outline small" type="button" disabled={Boolean(busy) || !evidence.id} onClick={() => verifyEvidence(evidence, 'rejected')}>Reject / Request Correction</button>}
                 </div>
               </div>;
             })}
