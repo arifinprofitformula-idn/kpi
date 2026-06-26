@@ -16,6 +16,10 @@ function emptyActualDataEntry() {
   };
 }
 
+function emptyAnswer() {
+  return { actualValue: '', actualData: {}, link: '', notes: '', achievementNote: '', checklist: [] };
+}
+
 function actualDataValue(field, entry = {}) {
   if (NUMERIC_ACTUAL_TYPES.includes(field.type)) return entry.valueNumber;
   if (field.type === 'date') return entry.valueDate;
@@ -33,24 +37,14 @@ function sourceFieldFor(kpi) {
   return fields.find((field) => field.id === kpi.actualValueSourceFieldId || field.usedAsActualValue) || null;
 }
 
-function definitionHasActualDataFields(definition) {
-  return (definition?.kpis || []).some((kpi) => actualDataFields(kpi).length > 0);
-}
-
-export default function InputKpi({ assessableUsers, definitions, onSaved }) {
-  const [subjectId, setSubjectId] = useState('');
+export default function SelfActualData({ currentUser, definitions, onSaved }) {
   const [period, setPeriod] = useState(defaultPeriod());
   const [answers, setAnswers] = useState({});
   const [attendance, setAttendance] = useState({ sakit: 0, izin: 0, alpa: 0, cuti: 0 });
   const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const subject = assessableUsers.find((user) => user.id === Number(subjectId));
-  const definition = definitions[subject?.posisi];
-  const subjectUsesActualData = definitionHasActualDataFields(definition);
-
-  function emptyAnswer() {
-    return { actualValue: '', actualData: {}, link: '', notes: '', achievementNote: '', checklist: [] };
-  }
+  const definition = definitions[currentUser?.posisi];
 
   function updateAnswer(id, field, value) {
     setAnswers((current) => ({ ...current, [id]: { ...emptyAnswer(), ...current[id], [field]: value } }));
@@ -87,16 +81,9 @@ export default function InputKpi({ assessableUsers, definitions, onSaved }) {
 
   async function submit() {
     setError('');
-    if (!subject) {
-      setError('Pilih akun yang akan dinilai terlebih dahulu.');
-      return;
-    }
+    setMessage('');
     if (!definition) {
-      setError('Template KPI untuk posisi ini belum tersedia.');
-      return;
-    }
-    if (subjectUsesActualData) {
-      setError('Input Data Aktual harus diisi oleh akun yang dinilai. Atasan hanya melakukan verifikasi dan keputusan skor.');
+      setError('Template KPI untuk posisi Anda belum tersedia.');
       return;
     }
     const missingKpi = definition.kpis.find((kpi) => {
@@ -141,18 +128,17 @@ export default function InputKpi({ assessableUsers, definitions, onSaved }) {
     }
 
     setSaving(true);
-    const result = await api('submitKpi', {
-      subjectUserId: Number(subjectId),
+    const result = await api('submitSelfActualData', {
       selectedPeriode: period,
       draftAnswers: answers,
       draftKehadiran: attendance,
     });
     setSaving(false);
     if (!result.success) {
-      setError(result.error || 'Submission gagal.');
+      setError(result.error || 'Input Data Aktual gagal dikirim.');
       return;
     }
-    alert(`Penilaian ${period} berhasil disimpan.`);
+    setMessage('Data aktual dan evidence berhasil dikirim ke atasan untuk diverifikasi.');
     setAnswers({});
     setAttendance({ sakit: 0, izin: 0, alpa: 0, cuti: 0 });
     await onSaved();
@@ -160,25 +146,23 @@ export default function InputKpi({ assessableUsers, definitions, onSaved }) {
 
   return <>
     <div className="card">
+      <h3 className="card-title">Input Data Aktual Saya</h3>
+      <p className="card-subtitle">Data ini akan dikirim ke atasan untuk diverifikasi. Atasan akan menentukan skor final setelah data aktual dan evidence dinyatakan valid.</p>
+      <label>Nama</label>
+      <input type="text" value={currentUser?.nama || currentUser?.name || ''} disabled />
+      <label>Posisi / Jabatan</label>
+      <input type="text" value={currentUser?.posisi || ''} disabled />
       <label>Periode Laporan</label>
       <select value={period} onChange={(event) => setPeriod(event.target.value)}>
         {MONTHS.map((month) => <option key={month}>{month} {new Date().getFullYear()}</option>)}
       </select>
-      <label>Posisi / Jabatan</label>
-      <input type="text" value={subject?.posisi || ''} disabled />
-      <label>Akun yang Dinilai</label>
-      <select value={subjectId} onChange={(event) => { setSubjectId(event.target.value); setAnswers({}); setError(''); }}>
-        <option value="">-- Pilih anggota tim --</option>
-        {assessableUsers.map((user) => <option key={user.id} value={user.id}>{user.nama} - {user.posisi}</option>)}
-      </select>
+      {message && <div className="note-box">{message}</div>}
       {error && <div className="note-box note-error">{error}</div>}
+      {!definition && <div className="empty-state">Template KPI untuk posisi Anda belum tersedia.</div>}
     </div>
-    {definition && subjectUsesActualData && <div className="card">
-      <h3 className="card-title">Review Penilaian Tim</h3>
-      <p className="card-subtitle">Input Data Aktual diisi oleh akun yang dinilai. Atasan hanya melakukan review, verifikasi evidence, verifikasi actual data, dan keputusan skor final melalui tab Hasil KPI.</p>
-    </div>}
-    {definition && !subjectUsesActualData && <div className="card">
-      <h3 className="card-title">Form KPI - {subject.nama}</h3>
+
+    {definition && <div className="card">
+      <h3 className="card-title">Form KPI - {currentUser?.nama || currentUser?.name}</h3>
       {definition.kpis.map((kpi) => {
         const answer = { ...emptyAnswer(), ...answers[kpi.id] };
         const fields = actualDataFields(kpi);
@@ -186,9 +170,8 @@ export default function InputKpi({ assessableUsers, definitions, onSaved }) {
         const syncedActualValue = sourceField && NUMERIC_ACTUAL_TYPES.includes(sourceField.type)
           ? (answer.actualData?.[sourceField.id]?.valueNumber ?? '')
           : answer.actualValue;
-        const tier = calculatedTier(kpi, answer.actualValue);
-        const checklist = evidenceChecklist(kpi);
         const previewTier = calculatedTier(kpi, syncedActualValue);
+        const checklist = evidenceChecklist(kpi);
         return <div className="kpi-block" key={kpi.id}>
           <div className="kpi-head"><div className="kpi-title">{kpi.nama}</div><div className="kpi-bobot">Bobot {kpi.bobot}%</div></div>
           <div className="kpi-target">Target: {kpi.target}</div>
@@ -204,9 +187,10 @@ export default function InputKpi({ assessableUsers, definitions, onSaved }) {
             onChange={(event) => updateAnswer(kpi.id, 'actualValue', event.target.value === '' ? '' : Number(event.target.value))}
           />
           {sourceField && <div className="actual-value-source-note">Nilai aktual utama diambil dari field: {sourceField.label}</div>}
-          <div className={`formula-result ${(sourceField ? previewTier : tier) ? 'matched' : ''}`}>
-            {syncedActualValue === undefined || syncedActualValue === '' ? 'Skor dihitung otomatis.' : (sourceField ? previewTier : tier) ? <>Hasil formula: <strong>{(sourceField ? previewTier : tier).label}</strong> (skor {(sourceField ? previewTier : tier).skor})</> : 'Nilai belum masuk formula mana pun.'}
+          <div className={`formula-result ${previewTier ? 'matched' : ''}`}>
+            {syncedActualValue === undefined || syncedActualValue === '' ? 'Skor dihitung otomatis.' : previewTier ? <>Hasil formula: <strong>{previewTier.label}</strong> (skor {previewTier.skor})</> : 'Nilai belum masuk formula mana pun.'}
           </div>
+
           {fields.length > 0 && <div className="actual-data-panel">
             <div className="actual-data-title">C. Input Data Aktual</div>
             <div className="actual-data-subtitle">Isi data pendukung yang menjadi dasar angka capaian KPI. Data ini akan diverifikasi atasan.</div>
@@ -224,23 +208,18 @@ export default function InputKpi({ assessableUsers, definitions, onSaved }) {
                   </div>
                   <div className="actual-data-entry-grid">
                     <div className="actual-data-main-input">
-                      {field.type === 'textarea' ? <textarea
-                        rows="3"
-                        value={entry.valueText}
-                        onChange={(event) => updateActualData(kpi, field, 'valueText', event.target.value)}
-                      /> : field.type === 'boolean' ? <select
-                        value={entry.valueText}
-                        onChange={(event) => updateActualData(kpi, field, 'valueText', event.target.value)}
-                      >
-                        <option value="">-- Pilih --</option>
-                        <option value="1">Ya</option>
-                        <option value="0">Tidak</option>
-                      </select> : <input
-                        type={field.type === 'date' ? 'date' : field.type === 'url' ? 'url' : isNumeric ? 'number' : 'text'}
-                        step={isNumeric ? 'any' : undefined}
-                        value={field.type === 'date' ? entry.valueDate : isNumeric ? entry.valueNumber : entry.valueText}
-                        onChange={(event) => updateActualData(kpi, field, field.type === 'date' ? 'valueDate' : isNumeric ? 'valueNumber' : 'valueText', event.target.value)}
-                      />}
+                      {field.type === 'textarea' ? <textarea rows="3" value={entry.valueText} onChange={(event) => updateActualData(kpi, field, 'valueText', event.target.value)} />
+                        : field.type === 'boolean' ? <select value={entry.valueText} onChange={(event) => updateActualData(kpi, field, 'valueText', event.target.value)}>
+                          <option value="">-- Pilih --</option>
+                          <option value="1">Ya</option>
+                          <option value="0">Tidak</option>
+                        </select>
+                          : <input
+                            type={field.type === 'date' ? 'date' : field.type === 'url' ? 'url' : isNumeric ? 'number' : 'text'}
+                            step={isNumeric ? 'any' : undefined}
+                            value={field.type === 'date' ? entry.valueDate : isNumeric ? entry.valueNumber : entry.valueText}
+                            onChange={(event) => updateActualData(kpi, field, field.type === 'date' ? 'valueDate' : isNumeric ? 'valueNumber' : 'valueText', event.target.value)}
+                          />}
                       {field.unit && <span>{field.unit}</span>}
                     </div>
                     <div>
@@ -260,35 +239,37 @@ export default function InputKpi({ assessableUsers, definitions, onSaved }) {
               })}
             </div>
           </div>}
-          <label>Link Bukti</label>
-          <input type="url" value={answer.link || ''} onChange={(event) => updateAnswer(kpi.id, 'link', event.target.value)} />
-          {checklist.length > 0 && <div className="evidence-panel">
-            <div className="evidence-title">Checklist Bukti Wajib</div>
-            {checklist.map((item) => <label className="checkbox-row evidence-check-row" key={item}>
+
+          <div className="evidence-panel">
+            <div className="evidence-title">D. Evidence Checklist</div>
+            <label>Link Bukti</label>
+            <input type="url" value={answer.link || ''} onChange={(event) => updateAnswer(kpi.id, 'link', event.target.value)} />
+            {checklist.length > 0 ? checklist.map((item) => <label className="checkbox-row evidence-check-row" key={item}>
               <input
                 type="checkbox"
                 checked={(answer.checklist || []).includes(item)}
                 onChange={(event) => toggleChecklist(kpi.id, item, event.target.checked)}
               />
               <span>{item}</span>
-            </label>)}
-          </div>}
-          <label>Catatan Bukti</label>
-          <textarea rows="3" value={answer.notes || ''} onChange={(event) => updateAnswer(kpi.id, 'notes', event.target.value)} />
+            </label>) : <div className="evidence-empty">Tidak ada evidence checklist untuk KPI ini.</div>}
+            <label>Catatan Bukti</label>
+            <textarea rows="3" value={answer.notes || ''} onChange={(event) => updateAnswer(kpi.id, 'notes', event.target.value)} />
+          </div>
           <label>Catatan Pencapaian</label>
           <textarea rows="3" value={answer.achievementNote || ''} onChange={(event) => updateAnswer(kpi.id, 'achievementNote', event.target.value)} />
         </div>;
       })}
     </div>}
-    {definition && !subjectUsesActualData && <div className="card">
+
+    {definition && <div className="card">
       <h3 className="card-title">Kehadiran (Hari Kerja: {WORK_DAYS})</h3>
       <div className="kehadiran-grid">{Object.keys(attendance).map((key) => <div key={key}>
         <label>{key[0].toUpperCase() + key.slice(1)} (hari)</label>
         <input type="number" min="0" max={WORK_DAYS} value={attendance[key]} onChange={(event) => setAttendance({ ...attendance, [key]: Number(event.target.value) })} />
       </div>)}</div>
       <div className="actions">
-        <button className="btn secondary" type="button" onClick={() => { setAnswers({}); setError(''); }} disabled={saving}>Reset</button>
-        <button className="btn" type="button" onClick={submit} disabled={saving}>{saving ? 'Menyimpan...' : 'Simpan Penilaian'}</button>
+        <button className="btn secondary" type="button" onClick={() => { setAnswers({}); setError(''); setMessage(''); }} disabled={saving}>Reset</button>
+        <button className="btn" type="button" onClick={submit} disabled={saving}>{saving ? 'Mengirim...' : 'Kirim ke Atasan'}</button>
       </div>
     </div>}
   </>;

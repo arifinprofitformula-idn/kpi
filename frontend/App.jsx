@@ -3,6 +3,7 @@ import Approval from './components/Approval.jsx';
 import InputKpi from './components/InputKpi.jsx';
 import KpiSettings from './components/KpiSettings.jsx';
 import Login from './components/Login.jsx';
+import SelfActualData from './components/SelfActualData.jsx';
 import Users from './components/Users.jsx';
 import { api } from './lib/api.js';
 
@@ -83,6 +84,7 @@ export default function App() {
 
   const isAdmin = auth.role === 'admin';
   const canEvaluate = ['admin', 'manager', 'supervisor'].includes(auth.role);
+  const canSelfSubmit = auth.role !== 'admin';
   const roleLabel = `${auth.currentUser?.nama || 'Akun'} - ${auth.role}`;
 
   return <>
@@ -98,12 +100,14 @@ export default function App() {
       </div>
     </header>
     <nav className="tabs">
+      {canSelfSubmit && <button className={`tab-btn ${tab === 'selfActualData' ? 'active' : ''}`} onClick={() => setTab('selfActualData')}>Input Data Aktual Saya</button>}
       {canEvaluate && <button className={`tab-btn ${tab === 'input' ? 'active' : ''}`} onClick={() => setTab('input')}>Penilaian Tim</button>}
       <button className={`tab-btn ${tab === 'results' ? 'active' : ''}`} onClick={() => setTab('results')}>Hasil KPI</button>
       {isAdmin && <button className={`tab-btn ${tab === 'users' ? 'active' : ''}`} onClick={() => setTab('users')}>Pengaturan User</button>}
       {isAdmin && <button className={`tab-btn ${tab === 'settings' ? 'active' : ''}`} onClick={() => setTab('settings')}>Pengaturan Form KPI</button>}
     </nav>
     {loadError && <div className="note-box note-error">{loadError}</div>}
+    {tab === 'selfActualData' && canSelfSubmit && <SelfActualData currentUser={auth.currentUser} definitions={data.posisiData} onSaved={loadData} />}
     {tab === 'input' && canEvaluate && (data.assessableUsers.length
       ? <InputKpi assessableUsers={data.assessableUsers} definitions={data.posisiData} onSaved={loadData} />
       : <div className="card empty-state">Belum ada akun yang ditugaskan untuk Anda nilai.</div>)}

@@ -81,6 +81,9 @@ function action_handler(array $payload): void
         case 'submitKpi':
             handleSubmit($payload);
             break;
+        case 'submitSelfActualData':
+            handleSubmit($payload, true);
+            break;
         case 'verifyActualData':
             handleVerifyActualData($payload);
             break;
@@ -155,11 +158,22 @@ function handleLoadData(): void
     jsonResponse($response);
 }
 
-function handleSubmit(array $payload): void
+function definitionHasActualDataFields(array $definition): bool
+{
+    foreach (($definition['kpis'] ?? []) as $kpi) {
+        if (is_array($kpi['actualDataFields'] ?? null) && count($kpi['actualDataFields']) > 0) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function handleSubmit(array $payload, bool $selfSubmission = false): void
 {
     $userRole = $_SESSION['role'] ?? 'api';
     $currentUser = $_SESSION['current_user'] ?? null;
-    $subjectUserId = (int) ($payload['subjectUserId'] ?? 0);
+    $subjectUserId = $selfSubmission ? (int) ($currentUser['id'] ?? 0) : (int) ($payload['subjectUserId'] ?? 0);
     $selectedPeriode = trim($payload['selectedPeriode'] ?? '');
     $draftAnswers = $payload['draftAnswers'] ?? [];
     $draftKehadiran = $payload['draftKehadiran'] ?? ['sakit' => 0, 'izin' => 0, 'alpa' => 0, 'cuti' => 0];
@@ -167,10 +181,13 @@ function handleSubmit(array $payload): void
         jsonResponse(['success' => false, 'error' => 'Format data KPI tidak valid.']);
     }
 
-    if (!$currentUser || !in_array($userRole, ['admin', 'manager', 'supervisor'], true)) {
+    if (!$currentUser) {
+        jsonResponse(['success' => false, 'error' => 'Unauthorized'], 401);
+    }
+    if (!$selfSubmission && !in_array($userRole, ['admin', 'manager', 'supervisor'], true)) {
         jsonResponse(['success' => false, 'error' => 'Akun ini tidak memiliki akses untuk melakukan penilaian.'], 403);
     }
-    if (!evaluatorCanAssess((int) $currentUser['id'], $subjectUserId)) {
+    if (!$selfSubmission && !evaluatorCanAssess((int) $currentUser['id'], $subjectUserId)) {
         jsonResponse(['success' => false, 'error' => 'Anda tidak ditugaskan untuk menilai akun tersebut.'], 403);
     }
     if ($selectedPeriode === '' || strlen($selectedPeriode) > 64) {
@@ -190,6 +207,12 @@ function handleSubmit(array $payload): void
     $definitions = getKpiDefinitions();
     if (!isset($definitions[$selectedPosisi])) {
         jsonResponse(['success' => false, 'error' => 'Posisi tidak valid.']);
+    }
+    if (!$selfSubmission && definitionHasActualDataFields($definitions[$selectedPosisi])) {
+        jsonResponse([
+            'success' => false,
+            'error' => 'Input Data Aktual harus diisi oleh akun yang dinilai. Atasan hanya melakukan verifikasi dan keputusan skor.',
+        ], 403);
     }
 
     $answers = [];
@@ -464,7 +487,7 @@ function handleSubmit(array $payload): void
             'id' => $kpi['id'],
             'tier' => (int) $matchedTier['skor'],
             'calculatedTier' => (int) $matchedTier['skor'],
-            'finalTier' => (int) $matchedTier['skor'],
+            'finalTier' => $selfSubmission ? null : (int) $matchedTier['skor'],
             'actualValue' => (float) $actualValue,
             'actualData' => $actualData,
             'actualDataJson' => $actualDataJson,
@@ -499,7 +522,7 @@ function handleSubmit(array $payload): void
         $stmt = $pdo->prepare('INSERT INTO submissions (user_id, evaluator_user_id, nama, posisi, periode, tanggal, status, kehadiran_sakit, kehadiran_izin, kehadiran_alpa, kehadiran_cuti, score_kpi, pct_kpi, pct_kehadiran, final_achievement, catatan) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
         $stmt->execute([
             $subjectUserId,
-            (int) $currentUser['id'],
+            $selfSubmission ? null : (int) $currentUser['id'],
             $selectedNama,
             $selectedPosisi,
             $selectedPeriode,
@@ -761,6 +784,10 @@ function handleVerifyActualData(array $payload): void
         'actual_data_id' => $actualDataId,
         'status' => $status,
     ]);
+    if ($selfSubmission) {
+        securityAudit('self_actual_data_submitted', ['submission_id' => $submissionId ?? null]);
+    }
+
     jsonResponse(['success' => true]);
 }
 
@@ -1149,12 +1176,9 @@ function handleUpdateFinalKpiDecision(array $payload): void
 
 function handleRevisi(array $payload): void
 {
-    if (!isAdmin()) {
-        jsonResponse(['success' => false, 'error' => 'Akses ditolak.'], 403);
-    }
-
     $id = intval($payload['id'] ?? 0);
     $note = trim($payload['note'] ?? '');
+    $currentUserId = isset($_SESSION['current_user']['id']) ? (int) $_SESSION['current_user']['id'] : null;
     if ($id <= 0 || $note === '') {
         jsonResponse(['success' => false, 'error' => 'ID submission dan catatan revisi harus diisi.']);
     }
@@ -1163,7 +1187,7 @@ function handleRevisi(array $payload): void
     }
 
     $pdo = getDb();
-    $existing = $pdo->prepare('SELECT status FROM submissions WHERE id = ? LIMIT 1');
+    $existing = $pdo->prepare('SELECT status, user_id FROM submissions WHERE id = ? LIMIT 1');
     $existing->execute([$id]);
     $submission = $existing->fetch();
     if (!$submission) {
@@ -1172,10 +1196,14 @@ function handleRevisi(array $payload): void
     if ($submission['status'] === 'Approved') {
         jsonResponse(['success' => false, 'error' => 'Submission sudah Approved dan terkunci.'], 423);
     }
+    $canRequestRevision = isAdmin()
+        || ($currentUserId !== null && evaluatorCanAssess($currentUserId, (int) $submission['user_id']));
+    if (!$canRequestRevision) {
+        jsonResponse(['success' => false, 'error' => 'Akses revisi ditolak.'], 403);
+    }
     $stmt = $pdo->prepare('UPDATE submissions SET status = ?, catatan = ? WHERE id = ?');
     $stmt->execute(['Revisi', $note, $id]);
-    $actorUserId = isset($_SESSION['current_user']['id']) ? (int) $_SESSION['current_user']['id'] : null;
-    recordSubmissionAudit($id, null, $actorUserId, 'revision_requested', ['status' => $submission['status']], ['status' => 'Revisi'], $note);
+    recordSubmissionAudit($id, null, $currentUserId, 'revision_requested', ['status' => $submission['status']], ['status' => 'Revisi'], $note);
     securityAudit('submission_revision_requested', ['submission_id' => $id]);
     jsonResponse(['success' => true]);
 }

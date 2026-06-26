@@ -554,7 +554,7 @@ function SubmissionModal({ submission, role, onClose, onExport, onRefresh }) {
       </div>
       <div className="actions">
         <button className="btn secondary" type="button" onClick={onExport}>Export PDF</button>
-        {isAdmin && !locked && <button className="btn secondary" type="button" disabled={Boolean(busy)} onClick={requestEvidenceRevision}>Minta Revisi Evidence</button>}
+        {canVerifyActualData && !locked && <button className="btn secondary" type="button" disabled={Boolean(busy)} onClick={requestEvidenceRevision}>Minta Revisi Evidence</button>}
         {isAdmin && !locked && <button className="btn" type="button" disabled={Boolean(busy)} onClick={approveWithEvidence}>{busy === 'approve' ? 'Memproses...' : 'Approve Setelah Evidence Verified'}</button>}
       </div>
     </div>
